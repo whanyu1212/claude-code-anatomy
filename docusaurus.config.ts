@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://claude-code-anatomy.vercel.app',
+  url: 'https://claude-code-anatomy-sigma.vercel.app',
   baseUrl: '/',
 
   onBrokenLinks: 'throw',

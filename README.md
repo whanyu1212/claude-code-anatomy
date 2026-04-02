@@ -6,7 +6,7 @@ A deep-dive into the internals of [Claude Code](https://code.claude.com) CLI v2.
 
 Key sections compare Claude Code's architecture against Google ADK, OpenAI Agents SDK, LangChain, and LangGraph.
 
-**Live site:** [claude-code-anatomy.pages.dev](https://claude-code-anatomy.vercel.app)
+**Live site:** [claude-code-anatomy.pages.dev](https://claude-code-anatomy-sigma.vercel.app)
 
 ## What's Covered
 
