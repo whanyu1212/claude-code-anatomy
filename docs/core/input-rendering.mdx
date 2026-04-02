@@ -1,0 +1,71 @@
+---
+sidebar_position: 4
+title: Input & Rendering
+---
+
+import { FlowDiagram, Node, Conn, Branches } from '@site/src/components/Diagrams';
+import { TerminalTurnDemo, RenderingStackDemo } from '@site/src/components/TerminalMockup';
+
+# Input & Rendering
+
+The two ends of every conversation turn — how your keystrokes enter the system, and how the AI's response appears on screen.
+
+## A Full Turn
+
+Here's what a real turn looks like in the terminal. Notice how text streams in, tools show inline, the permission dialog appears, and diffs render — all before the final response:
+
+<TerminalTurnDemo />
+
+## How Input Enters
+
+<FlowDiagram>
+  <Node icon="⌨️" variant="primary">You press Enter</Node>
+  <Conn />
+  <Node icon="❓" variant="purple">Starts with / ?</Node>
+  <Conn size="short" />
+  <Branches>
+    <Node icon="📋" variant="warning">Yes → Command system</Node>
+    <Node icon="📨" variant="primary">No → UserMessage</Node>
+  </Branches>
+  <Conn />
+  <Node icon="📎">Attach files, images, URLs</Node>
+  <Conn />
+  <Node icon="🚀" variant="highlight">Hand off to Query Engine</Node>
+</FlowDiagram>
+
+The `PromptInput` component handles multi-line input, command history (up/down arrows), tab completion, and slash command detection. See [Command System](/extensions/command-system) for the `/` path.
+
+## How Output Renders
+
+Rendering is **progressive** — text appears as it streams, not all at once. The pipeline:
+
+<RenderingStackDemo />
+
+This is the same idea as a web browser's rendering pipeline, but for terminal characters instead of DOM elements.
+
+### Interrupt Handling
+
+Press **Ctrl+C** at any point during a turn to:
+- Cancel running tools
+- Abort the API stream
+- Return to the input prompt
+- Conversation history is preserved up to the interruption
+
+## Key Components
+
+| Component | Role |
+|-----------|------|
+| `PromptInput` | Text input, history, tab completion |
+| `Messages` | Scrollable conversation view |
+| `MessageResponse` | Markdown formatting for AI responses |
+| `PermissionRequest` | Allow / Deny / Always Allow dialog |
+| `Spinner` | Activity indicator during tool execution |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/screens/REPL.tsx` | Main REPL screen |
+| `src/components/PromptInput/` | User input handling |
+| `src/components/Messages/` | Message display and scrolling |
+| `src/components/PermissionRequest/` | Tool approval dialog |

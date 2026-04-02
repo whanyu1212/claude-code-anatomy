@@ -1,0 +1,86 @@
+---
+sidebar_position: 3
+title: Startup & Bootstrap
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group } from '@site/src/components/Diagrams';
+import InitTimeline from '@site/src/components/InitTimeline';
+
+# Startup & Bootstrap
+
+How Claude Code goes from `bun dist/cli.js` to a fully interactive REPL — before any conversation begins.
+
+## The Big Picture
+
+Think of startup like opening a restaurant before the first customer arrives. You need to turn on the lights (config), check the fridge (auth), set up the menu (tools), and unlock the door (REPL). Only then can you serve anyone.
+
+<FlowDiagram>
+  <Node icon="🚀" variant="primary">Process starts</Node>
+  <Conn />
+  <Node icon="⚡">Quick checks — is this just --version?</Node>
+  <Conn />
+  <Node icon="⚙️">Load config, auth, plugins, tools, MCP servers</Node>
+  <Conn />
+  <Node icon="🖥️" variant="highlight">Launch the interactive REPL</Node>
+</FlowDiagram>
+
+## Fast-Path Routing
+
+The entry point (`src/entrypoints/cli.tsx`, ~302 lines) is designed to be **fast when possible**. Before loading the full app, it checks for special flags that need quick responses:
+
+| Flag | What Happens | Imports Needed |
+|------|-------------|----------------|
+| `--version` / `-v` | Print version string, exit | Zero — fastest path |
+| `--dump-system-prompt` | Render full system prompt, exit | Config + prompt system |
+| `--claude-in-chrome-mcp` | Launch Chrome MCP server | MCP subsystem |
+| `--computer-use-mcp` | Launch computer-use MCP server | MCP subsystem |
+| `--daemon-worker` | Start background daemon | Daemon subsystem |
+| `remote-control` / `bridge` | Launch IDE bridge | Bridge subsystem |
+| *(none of the above)* | **Load full CLI** | Everything |
+
+The key trick is **dynamic imports** — each path only loads what it needs. The `--version` path literally imports nothing beyond the entry file itself.
+
+:::tip Why dynamic imports matter
+If Claude Code loaded all 489 npm packages for every `--version` check, startup would be painfully slow. Dynamic imports mean you only pay for what you use.
+:::
+
+## Full Initialization
+
+When no fast-path flag matches, the entry point dynamically imports `main.tsx` (~4,683 lines), which runs through 9 initialization phases before the REPL is ready:
+
+<InitTimeline />
+
+## Session Restoration
+
+When you use `--resume` or `--continue`, the bootstrap path changes:
+
+1. Previous session messages loaded from `~/.claude/sessions/<id>`
+2. Conversation state restored to AppState
+3. REPL opens with your history intact — pick up where you left off
+
+## When Things Go Wrong
+
+Startup is designed to be **resilient** — a single failure shouldn't prevent the whole app from launching:
+
+| Failure | What Happens |
+|---------|-------------|
+| Missing config | Falls back to sensible defaults |
+| Auth failure | Prompts for API key or launches OAuth flow in browser |
+| MCP server won't start | Warning logged, that server skipped, everything else works |
+| Plugin failure | Warning logged, that plugin skipped |
+
+## What Happens Next?
+
+Once `launchRepl()` fires, the terminal UI is live and waiting for your first input. From here:
+
+- **[Input & Rendering](./input-rendering.mdx)** — how your keystrokes enter the system and how responses render
+- **[The Agent Loop](./agent-loop.mdx)** — the cycle that powers every conversation turn
+
+## Key Source Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/entrypoints/cli.tsx` | ~302 | Bootstrap entry, fast-path routing |
+| `src/main.tsx` | ~4,683 | Full CLI initialization |
+| `src/replLauncher.tsx` | — | REPL rendering setup |
+| `src/bootstrap/state.ts` | — | Session state initialization |

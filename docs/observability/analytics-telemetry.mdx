@@ -1,0 +1,133 @@
+---
+sidebar_position: 1
+title: Analytics & Telemetry
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Analytics & Telemetry
+
+How Claude Code collects usage data, evaluates feature flags, and exports observability signals.
+
+## Feature Flags (GrowthBook)
+
+Claude Code uses [GrowthBook](https://www.growthbook.io/) for feature flag evaluation:
+
+<FlowDiagram>
+  <Node icon="🏷️">GrowthBook Service</Node>
+  <Conn />
+  <Node icon="🚩">90+ Feature Flags</Node>
+  <Conn />
+  <Node variant="purple">Build-time or Runtime?</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="primary">Build-time: bun:bundle feature() — dead code elimination</Node>
+    <Node variant="primary">Runtime: GrowthBook SDK evaluation</Node>
+  </Branches>
+</FlowDiagram>
+
+### Build-Time Flags
+The majority of flags are resolved at **build time** via Bun's `feature()` API:
+```typescript
+import { feature } from 'bun:bundle'
+
+// Replaced with true/false at build time
+// Dead branch eliminated from bundle
+if (feature('COORDINATOR_MODE')) {
+  // This entire block is removed in the public build
+}
+```
+
+### Runtime Flags
+Some flags are evaluated at runtime via the GrowthBook SDK, allowing A/B testing and gradual rollouts without rebuilding.
+
+### Flag Categories
+
+| Category | Examples | Default (Public Build) |
+|----------|----------|----------------------|
+| **Core features** | `BUILTIN_EXPLORE_PLAN_AGENTS`, `TOKEN_BUDGET`, `MCP_SKILLS` | `true` |
+| **Internal features** | `COORDINATOR_MODE`, `KAIROS`, `DAEMON` | `false` |
+| **Experimental** | `VOICE_MODE`, `WEB_BROWSER_TOOL`, `BRIDGE_MODE` | `false` |
+| **Ablation** | `ABLATION_BASELINE` | `false` |
+
+See the [Feature Flags Appendix](../appendix/feature-flags.md) for the complete list.
+
+## Event Pipeline
+
+<FlowDiagram>
+  <Node icon="⚡">User/System Action</Node>
+  <Conn />
+  <Node icon="📊">logEvent()</Node>
+  <Conn />
+  <Node variant="purple">Event Sink</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <FlowDiagram>
+      <Node variant="primary">First-Party Analytics</Node>
+      <Conn size="short" />
+      <Node icon="📊">Datadog</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">OpenTelemetry Export</Node>
+      <Conn size="short" />
+      <Branches cols={3}>
+        <Node variant="subtle">Traces</Node>
+        <Node variant="subtle">Metrics</Node>
+        <Node variant="subtle">Logs</Node>
+      </Branches>
+    </FlowDiagram>
+  </Branches>
+</FlowDiagram>
+
+### What's Tracked
+
+| Event Type | Examples |
+|------------|---------|
+| Session events | Session start, end, duration |
+| Tool usage | Tool name, execution time, success/failure |
+| Model usage | Tokens consumed, model used, cache hits |
+| Command usage | Which slash commands are used |
+| Error events | Error types, stack traces |
+
+### Event Metadata
+Each event includes:
+- Session ID
+- User context (anonymous)
+- Tool names and outcomes
+- Token counts
+- Timestamps
+
+## OpenTelemetry
+
+Claude Code has comprehensive OpenTelemetry instrumentation:
+
+### Exporters
+
+| Signal | Supported Exporters |
+|--------|-------------------|
+| **Traces** | OTLP (gRPC, HTTP, Proto) |
+| **Metrics** | OTLP (gRPC, HTTP, Proto), Prometheus |
+| **Logs** | OTLP (gRPC, HTTP, Proto) |
+
+### What's Instrumented
+- API call latency and token usage
+- Tool execution timing
+- MCP server connection lifecycle
+- Session duration and message count
+
+## Killswitch
+
+Telemetry can be disabled:
+- Environment variable: `CLAUDE_CODE_DISABLE_TELEMETRY=1`
+- Settings: telemetry disabled in `settings.json`
+- Enterprise policy: admin can disable telemetry fleet-wide
+
+When disabled, no events are collected or transmitted.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/analytics/` | GrowthBook, event pipeline, telemetry |
+| `src/services/analytics/growthbook.ts` | Feature flag evaluation |
+| `src/services/analytics/telemetry.ts` | OpenTelemetry setup |

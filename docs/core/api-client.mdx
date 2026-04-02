@@ -1,0 +1,116 @@
+---
+sidebar_position: 7
+title: API Client
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+import StreamingAnimation from '@site/src/components/StreamingAnimation';
+
+# API Client
+
+The network layer — how Claude Code talks to the model, handles errors, and supports multiple providers.
+
+## Providers
+
+One interface, four backends. The provider is selected by environment variable:
+
+<ArchDiagram>
+  <ArchLayer label="Your Code">
+    <ArchBox accent>Query Engine</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Unified Client">
+    <ArchBox accent>API Client Interface</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Backends">
+    <ArchBox>Anthropic Direct</ArchBox>
+    <ArchBox>AWS Bedrock</ArchBox>
+    <ArchBox>Google Vertex</ArchBox>
+    <ArchBox>Foundry</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+| Env Variable | Provider | Auth Method |
+|-------------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic Direct | API key or OAuth |
+| `CLAUDE_CODE_USE_BEDROCK=1` | AWS Bedrock | AWS credential chain (env, profile, IAM, SSO) |
+| `CLAUDE_CODE_USE_VERTEX=1` | Google Vertex AI | `GOOGLE_APPLICATION_CREDENTIALS` or gcloud |
+| Foundry config | Foundry | Foundry credentials |
+
+## Request Shape
+
+Every API call sends the [system prompt](./prompt-memory-context.mdx), conversation history, and tool definitions:
+
+<details>
+<summary>TypeScript</summary>
+
+```typescript
+{
+  model: "claude-sonnet-4-20250514",
+  system: assembledSystemPrompt,     // ~10K+ tokens
+  messages: conversationHistory,      // grows each turn
+  tools: toolDefinitions,             // 44 tool schemas
+  stream: true,
+  max_tokens: responseLimit,
+}
+```
+
+</details>
+
+<details>
+<summary>Python</summary>
+
+```python
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    system=assembled_system_prompt,
+    messages=conversation_history,
+    tools=tool_definitions,
+    stream=True,
+    max_tokens=response_limit,
+)
+```
+
+</details>
+
+## Streaming
+
+Watch how SSE events arrive from the API and map to what you see in the terminal:
+
+<StreamingAnimation />
+
+Text renders progressively as `content_block_delta` events arrive. Tool calls appear inline as they're detected. Tool input JSON arrives in chunks and is accumulated via a partial JSON parser until complete.
+
+## Error Handling & Retries
+
+| Error | What Happens | Strategy |
+|-------|-------------|----------|
+| **429** Rate Limit | Wait and retry | Exponential backoff with jitter (1s → 2s → 4s) |
+| **5xx** Server Error | Retry up to 3 times | Same backoff strategy |
+| **Network** Error | Retry with delay | Increasing intervals |
+| **401** Unauthorized | Re-authenticate | Prompt for API key or re-launch OAuth |
+| **Context Too Large** | Trigger compaction | Summarize old messages, retry |
+
+:::info Thundering herd prevention
+The backoff includes **random jitter** — each retry waits a slightly different amount of time. This prevents many clients from retrying at the exact same moment after an outage.
+:::
+
+## Cost Tracking
+
+Every request tracks token usage, feeding into:
+
+| Metric | What | Where It Shows |
+|--------|------|----------------|
+| Input tokens | System prompt + messages + tool schemas | Token budget UI |
+| Output tokens | Model response text + tool calls | Token budget UI |
+| Cache tokens | Prompt caching reads/writes | Analytics |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/api/claude.ts` | Main API client wrapper |
+| `src/services/api/bootstrap.ts` | User profile and session data |
+| `src/services/api/` | Provider-specific clients (20+ files) |
+| `src/utils/auth.ts` | Authentication logic |

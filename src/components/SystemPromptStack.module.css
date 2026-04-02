@@ -1,0 +1,224 @@
+/* ================================================================
+   System Prompt Stack — Layered briefing packet visualization
+   ================================================================ */
+
+.container {
+  margin: 1.5rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #2e2e2e;
+  background: #0a0a0a;
+}
+
+[data-theme='light'] .container {
+  border-color: #e0e0e0;
+  background: #fafafa;
+}
+
+/* Header showing total size */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #161616;
+  border-bottom: 1px solid #2e2e2e;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+[data-theme='light'] .header {
+  background: #f0f0f0;
+  border-color: #e0e0e0;
+}
+
+.headerLabel {
+  color: rgb(215, 119, 87);
+  font-weight: 600;
+}
+
+.headerSize {
+  color: rgb(153, 153, 153);
+}
+
+/* Stack of layers */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Each layer */
+.layer {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #1a1a1a;
+  transition: background 0.15s ease;
+}
+
+.layer:last-child {
+  border-bottom: none;
+}
+
+.layer:hover {
+  background: #111111;
+}
+
+[data-theme='light'] .layer {
+  border-bottom-color: #ebebeb;
+}
+
+[data-theme='light'] .layer:hover {
+  background: #f5f5f5;
+}
+
+/* Layer number / order indicator */
+.layerOrder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(80, 80, 80);
+  border-right: 1px solid #1a1a1a;
+}
+
+[data-theme='light'] .layerOrder {
+  border-right-color: #ebebeb;
+}
+
+/* Size bar — visual weight indicator */
+.layerBar {
+  width: 4px;
+  min-width: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.barRequired {
+  background: rgb(215, 119, 87);
+}
+
+.barContext {
+  background: rgb(177, 185, 249);
+}
+
+.barOptional {
+  background: rgb(78, 186, 101);
+}
+
+/* Layer content */
+.layerContent {
+  flex: 1;
+  padding: 10px 14px;
+  min-width: 0;
+}
+
+.layerName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 2px;
+}
+
+[data-theme='light'] .layerName {
+  color: #111111;
+}
+
+.layerDesc {
+  font-size: 12px;
+  color: rgb(153, 153, 153);
+  line-height: 1.4;
+}
+
+/* Layer meta (right side) */
+.layerMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 10px 14px;
+  gap: 2px;
+}
+
+.layerTokens {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: rgb(153, 153, 153);
+  white-space: nowrap;
+}
+
+.layerFile {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: rgb(80, 80, 80);
+  white-space: nowrap;
+}
+
+/* Category label */
+.categoryLabel {
+  padding: 6px 16px 6px 56px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+[data-theme='light'] .categoryLabel {
+  border-bottom-color: #ebebeb;
+}
+
+.categoryRequired {
+  color: rgb(215, 119, 87);
+  background: rgba(215, 119, 87, 0.03);
+}
+
+.categoryContext {
+  color: rgb(177, 185, 249);
+  background: rgba(177, 185, 249, 0.03);
+}
+
+.categoryOptional {
+  color: rgb(78, 186, 101);
+  background: rgba(78, 186, 101, 0.03);
+}
+
+/* Footer showing total */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #161616;
+  border-top: 1px solid #2e2e2e;
+  font-size: 12px;
+}
+
+[data-theme='light'] .footer {
+  background: #f0f0f0;
+  border-top-color: #e0e0e0;
+}
+
+.footerNote {
+  color: rgb(153, 153, 153);
+  font-style: italic;
+}
+
+.footerTotal {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: rgb(215, 119, 87);
+}
+
+@media (max-width: 640px) {
+  .layerMeta {
+    display: none;
+  }
+  .layerOrder {
+    width: 32px;
+    min-width: 32px;
+  }
+}

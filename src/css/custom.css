@@ -1,0 +1,349 @@
+/* ================================================================
+   Claude Code Anatomy — Design System
+   Inspired by: Dyte Docs (layout), Refine (landing), Supabase/Vercel (code)
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist-sans@latest/latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist-sans@latest/latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist-sans@latest/latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist-sans@latest/latin-700-normal.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ----------------------------------------------------------------
+   Token Layer: project-namespaced vars mapped to Infima
+   ---------------------------------------------------------------- */
+:root {
+  /* Brand: teal scale */
+  --cca-teal-50: #f0fdfa;
+  --cca-teal-100: #ccfbf1;
+  --cca-teal-200: #99f6e4;
+  --cca-teal-300: #5eead4;
+  --cca-teal-400: #2dd4bf;
+  --cca-teal-500: #14b8a6;
+  --cca-teal-600: #0d9488;
+  --cca-teal-700: #0f766e;
+  --cca-teal-800: #115e59;
+  --cca-teal-900: #134e4a;
+  --cca-teal-950: #042f2e;
+
+  /* Light mode surfaces */
+  --cca-bg: #ffffff;
+  --cca-bg-100: #f8f8f8;
+  --cca-bg-200: #efefef;
+  --cca-bg-300: #dcdcdc;
+  --cca-text: #000000;
+  --cca-text-muted: #646464;
+  --cca-border: #dadde1;
+  --cca-code-bg: #f6f8fa;
+
+  /* Infima mappings */
+  --ifm-color-primary: #0d9488;
+  --ifm-color-primary-dark: #0b8278;
+  --ifm-color-primary-darker: #0a7b71;
+  --ifm-color-primary-darkest: #08655d;
+  --ifm-color-primary-light: #0fa698;
+  --ifm-color-primary-lighter: #10ad9f;
+  --ifm-color-primary-lightest: #14c4b3;
+
+  /* Typography */
+  --ifm-font-family-base: 'Geist', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --ifm-heading-font-weight: 600;
+  --ifm-font-weight-semibold: 600;
+  --ifm-code-font-size: 90%;
+
+  /* Spacing & Shape */
+  --ifm-global-radius: 0.5rem;
+  --ifm-navbar-shadow: none;
+  --ifm-spacing-horizontal: 1.5rem;
+
+  /* Code highlights */
+  --docusaurus-highlighted-code-line-bg: rgba(147, 178, 244, 0.2);
+
+  /* Table */
+  --ifm-table-stripe-background: transparent;
+  --ifm-table-border-color: var(--cca-border);
+}
+
+[data-theme='dark'] {
+  --cca-bg: #161616;
+  --cca-bg-100: #1c1c1c;
+  --cca-bg-200: #2a2a2a;
+  --cca-bg-300: #2e2e2e;
+  --cca-text: #ffffff;
+  --cca-text-muted: #b4b4b4;
+  --cca-border: #2e2e2e;
+  --cca-code-bg: #1e1e1e;
+
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #1ec4af;
+  --ifm-color-primary-darker: #1cbba7;
+  --ifm-color-primary-darkest: #179a89;
+  --ifm-color-primary-light: #4adcc9;
+  --ifm-color-primary-lighter: #53dece;
+  --ifm-color-primary-lightest: #7ae7db;
+
+  --ifm-background-color: var(--cca-bg);
+  --ifm-background-surface-color: var(--cca-bg-100);
+  --ifm-color-content: #e7e7e7;
+  --ifm-link-color: var(--cca-teal-400);
+  --ifm-footer-background-color: var(--cca-bg-100);
+  --ifm-toc-border-color: var(--cca-border);
+
+  --docusaurus-highlighted-code-line-bg: rgba(105, 105, 105, 0.3);
+  --ifm-table-border-color: var(--cca-border);
+}
+
+/* ----------------------------------------------------------------
+   Global
+   ---------------------------------------------------------------- */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.02em;
+}
+
+/* ----------------------------------------------------------------
+   Navbar
+   ---------------------------------------------------------------- */
+.navbar {
+  border-bottom: 1px solid var(--cca-border);
+  backdrop-filter: blur(12px);
+  background: rgba(22, 22, 22, 0.85);
+}
+
+.navbar__item {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.navbar__link {
+  color: #d4d4d8 !important;
+  transition: color 0.2s ease;
+}
+
+.navbar__link:hover,
+.navbar__link--active {
+  color: #2dd4bf !important;
+}
+
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .navbar {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme='light'] .navbar__link {
+  color: #27272a !important;
+}
+
+[data-theme='light'] .navbar__link:hover,
+[data-theme='light'] .navbar__link--active {
+  color: #0d9488 !important;
+}
+
+[data-theme='light'] .navbar__title {
+  color: #111111 !important;
+}
+
+/* ----------------------------------------------------------------
+   Sidebar (Dyte-inspired)
+   ---------------------------------------------------------------- */
+.menu__link {
+  font-size: 14px;
+  border-radius: 4px 0 0 4px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  border-right: 2px solid var(--ifm-color-primary);
+  background-color: rgba(45, 212, 191, 0.08);
+}
+
+[data-theme='light'] .menu__link--active:not(.menu__link--sublist) {
+  background-color: rgba(13, 148, 136, 0.08);
+}
+
+.menu__list-item-collapsible:hover {
+  background: none;
+}
+
+nav.menu {
+  padding-right: 0;
+}
+
+/* ----------------------------------------------------------------
+   Code Blocks (Supabase/Vercel-inspired)
+   ---------------------------------------------------------------- */
+.prism-code {
+  border: 1px solid var(--cca-border);
+  border-radius: 6px;
+  font-variant-ligatures: none;
+}
+
+[data-theme='dark'] .prism-code {
+  background-color: var(--cca-code-bg) !important;
+}
+
+.code-block-error-line {
+  background-color: #ff000020;
+  border-left: 3px solid #ff000080;
+  display: block;
+  margin: 0 calc(var(--ifm-pre-padding) * -1);
+  padding: 0 var(--ifm-pre-padding);
+}
+
+/* ----------------------------------------------------------------
+   Tables (Dyte-inspired: clean, minimal)
+   ---------------------------------------------------------------- */
+table {
+  border-collapse: collapse;
+  border: none;
+  background-color: transparent;
+  font-size: 90%;
+}
+
+table :is(tr, td, th, thead) {
+  border: none;
+  background-color: transparent;
+  border-bottom: 1px solid var(--cca-border);
+}
+
+table th {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--cca-text-muted);
+}
+
+table td {
+  padding: 0.75rem;
+}
+
+/* ----------------------------------------------------------------
+   TOC (right sidebar)
+   ---------------------------------------------------------------- */
+.table-of-contents__link {
+  font-size: 13px;
+  transition: color 0.16s ease;
+}
+
+.table-of-contents__link--active {
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+}
+
+/* ----------------------------------------------------------------
+   Footer
+   ---------------------------------------------------------------- */
+.footer {
+  border-top: 1px solid var(--cca-border);
+}
+
+.footer__title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.footer__link-item {
+  font-size: 14px;
+  transition: color 0.16s ease;
+}
+
+/* ----------------------------------------------------------------
+   Docs content
+   ---------------------------------------------------------------- */
+.markdown > h2 {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--cca-border);
+}
+
+.markdown > h2:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+blockquote {
+  border-left: 3px solid var(--ifm-color-primary);
+  background-color: var(--cca-bg-100);
+  padding: 1rem;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ----------------------------------------------------------------
+   Pagination (prev/next)
+   ---------------------------------------------------------------- */
+.pagination-nav__link {
+  border: 1px solid var(--cca-border);
+  border-radius: 8px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary);
+  background-color: var(--cca-bg-100);
+}
+
+/* ----------------------------------------------------------------
+   Mermaid diagram containers
+   ---------------------------------------------------------------- */
+.docusaurus-mermaid-container {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------------
+   Scrollbar (dark mode)
+   ---------------------------------------------------------------- */
+[data-theme='dark'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: var(--cca-bg);
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: var(--cca-bg-300);
+  border-radius: 4px;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}

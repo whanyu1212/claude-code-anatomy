@@ -1,0 +1,157 @@
+---
+sidebar_position: 2
+title: MCP Integration
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# MCP Integration
+
+How Claude Code connects to Model Context Protocol servers — discovery, connection, tool wrapping, and resource access. For how MCP tools fit into the broader tool pipeline, see [Tool Sources](/tools/tool-sources).
+
+## What is MCP?
+
+The [Model Context Protocol](https://modelcontextprotocol.io) (MCP) is an open standard for connecting AI models to external tools and data sources. Claude Code acts as an MCP **client**, connecting to MCP **servers** that expose tools and resources.
+
+## Server Types
+
+Claude Code supports multiple MCP transport protocols:
+
+| Transport | How it Works | Use Case |
+|-----------|-------------|----------|
+| `stdio` | Spawns a subprocess, communicates via stdin/stdout | Local tools (filesystem, git, etc.) |
+| `sse` | HTTP Server-Sent Events | Remote servers |
+| `http` | HTTP request/response | Simple remote APIs |
+| `ws` | WebSocket | Bidirectional communication |
+| `sdk` | In-process SDK | Embedded tools |
+| `claudeai-proxy` | Claude.ai cloud proxy | Official cloud servers |
+
+## Configuration
+
+MCP servers are configured at multiple scopes, loaded in priority order:
+
+<ArchDiagram>
+  <ArchLayer label="Config Sources">
+    <ArchBox>User Config (~/.claude/mcp.json)</ArchBox>
+    <ArchBox>Project Config (.claude.json)</ArchBox>
+    <ArchBox>Local Config (.claude/local.json)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Additional Sources">
+    <ArchBox>Managed Config (Org policies)</ArchBox>
+    <ArchBox>Claude.ai (Official servers)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Result">
+    <ArchBox accent>Merge Configs → Active MCP Servers</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+### Config Format
+
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "@my-org/mcp-server"],
+      "env": {
+        "API_KEY": "..."
+      }
+    },
+    "remote-server": {
+      "url": "https://mcp.example.com/sse",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+## Connection Lifecycle
+
+Each MCP server connection goes through distinct phases. The connection stays alive for the session and handles failures with automatic reconnection:
+
+<FlowDiagram>
+  <Node icon="📋" variant="primary">Load config — parse mcp.json scopes</Node>
+  <Conn />
+  <Node icon="📡">Spawn / connect (stdio, sse, http, ws)</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Failed — log warning, skip server</Node>
+    <Node variant="success">Connected — handshake OK</Node>
+  </Branches>
+  <Conn />
+  <Node icon="🔧">Discovery — tools/list + resources/list</Node>
+  <Conn />
+  <Node icon="🧩">Wrap as MCPTool instances, register in tool system</Node>
+  <Conn />
+  <Node icon="✅" variant="highlight">Ready — accepting tool calls</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Group label="Tool Call">
+      <Node icon="⚙️" variant="primary">Execute on server</Node>
+      <Conn size="short" />
+      <Node variant="success">Result → tool_result</Node>
+    </Group>
+    <Group label="Server Crash">
+      <Node icon="💥" variant="warning">Attempt reconnect</Node>
+      <Conn size="short" />
+      <Node variant="success">Re-discover tools</Node>
+    </Group>
+    <Group label="Session End">
+      <Node icon="🛑" variant="danger">Kill subprocess / close</Node>
+      <Conn size="short" />
+      <Node variant="subtle">Cleanup complete</Node>
+    </Group>
+  </Branches>
+</FlowDiagram>
+
+## Tool Wrapping
+
+MCP tools are wrapped as `MCPTool` instances and merged into the main tool registry:
+
+### Naming Convention
+MCP tool names are prefixed to avoid collisions:
+```
+mcp__{server-name}__{tool-name}
+```
+
+For example, a tool `search` from server `github` becomes `mcp__github__search`.
+
+### Schema Translation
+MCP tool input schemas (JSON Schema) are translated to match Claude Code's internal Zod-based validation.
+
+### Permission Integration
+MCP tools go through the same permission system as built-in tools. Permission rules can match MCP tool names:
+```
+MCPTool(mcp__github__*)    # Allow all GitHub MCP tools
+MCPTool(mcp__filesystem__write)  # Require approval for filesystem writes
+```
+
+## Resource Access
+
+MCP servers can also expose **resources** — named data sources that Claude can read:
+
+- `ListMcpResources` tool — lists available resources from all connected servers
+- `ReadMcpResource` tool — reads a specific resource by URI
+
+Resources are useful for exposing databases, documentation, API schemas, or any structured data.
+
+## Error Handling
+
+| Scenario | Behavior |
+|----------|----------|
+| Server fails to start | Warning logged, server skipped |
+| Server crashes mid-session | Attempt reconnection, log error |
+| Tool call fails | Error returned as tool_result, model can adapt |
+| Server timeout | Configurable timeout, error on expiry |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/mcp/client.ts` | MCP client management |
+| `src/services/mcp/types.ts` | MCP type definitions |
+| `src/services/mcp/config.ts` | Config parsing and merging |
+| `src/tools/MCPTool/` | Generic MCP tool wrapper |
+| `src/commands/mcp/` | `/mcp` command UI |

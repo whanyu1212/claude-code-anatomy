@@ -1,0 +1,38 @@
+---
+sidebar_position: 2
+title: Built-in Tools
+---
+
+import ToolCatalog from '@site/src/components/ToolCatalog';
+
+# Built-in Tools
+
+All 40 built-in tools organized by category. Filter by trait, click any card to expand.
+
+<ToolCatalog />
+
+## Tool Availability by Agent Type
+
+Not all agents have access to all tools. Sub-agents get filtered tool sets:
+
+| Agent Type | Available Tools |
+|------------|----------------|
+| `general-purpose` | All tools |
+| `Explore` | Read-only tools (Read, Glob, Grep, WebFetch, WebSearch) — no Edit, Write, Bash |
+| `Plan` | Read-only tools — no Edit, Write, Bash |
+| `code-simplifier` | All tools |
+
+## Key Source Files
+
+| Directory | Tools |
+|-----------|-------|
+| `src/tools/FileReadTool/` | Read |
+| `src/tools/FileEditTool/` | FileEdit |
+| `src/tools/FileWriteTool/` | FileWrite |
+| `src/tools/GlobTool/` | Glob |
+| `src/tools/GrepTool/` | Grep |
+| `src/tools/BashTool/` | Bash |
+| `src/tools/AgentTool/` | Agent, SendMessage |
+| `src/tools/TaskCreateTool/` | TaskCreate |
+| `src/tools/MCPTool/` | MCPTool |
+| `src/tools/SkillTool/` | SkillTool |

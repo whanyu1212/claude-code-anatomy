@@ -1,0 +1,426 @@
+---
+sidebar_position: 4
+title: Framework Comparison
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Tool System — Framework Comparison
+
+Every agentic framework needs tools — but they define, validate, permission-check, and execute them very differently. This page compares Claude Code's tool system against five popular frameworks, with real code from their source repos.
+
+## Defining a Tool
+
+The most fundamental question: how do you tell the framework "here's a thing the model can call"?
+
+<Tabs>
+<TabItem value="claude" label="Claude Code" default>
+
+```typescript
+// buildTool() factory — you provide name, schema, call()
+const ReadTool = buildTool({
+  name: 'Read',
+  inputSchema: z.object({
+    file_path: z.string().describe('Absolute path to the file'),
+    offset: z.number().optional(),
+    limit: z.number().optional(),
+  }),
+
+  async call(args, context, canUseTool, parentMsg, onProgress) {
+    const { allowed } = await canUseTool(args)
+    if (!allowed) return { data: null }
+    const content = await readFile(args.file_path)
+    return { data: content }
+  },
+
+  isReadOnly() { return true },
+  isConcurrencySafe() { return true },
+})
+```
+
+**Pattern:** Factory function with rich interface (45+ methods). Zod schema internally, converted to JSON Schema for the API. Each tool is a directory under `src/tools/`.
+
+</TabItem>
+<TabItem value="adk" label="Google ADK">
+
+```python
+# Option 1: Wrap any Python function
+def get_weather(city: str, units: str = "celsius") -> dict:
+    """Get current weather for a city.
+
+    Args:
+        city: The city name.
+        units: Temperature units.
+    """
+    return {"temp": 22, "units": units}
+
+weather_tool = FunctionTool(get_weather)
+
+# Option 2: Subclass BaseTool for full control
+class MyBashTool(BaseTool):
+    def __init__(self):
+        super().__init__(
+            name="execute_bash",
+            description="Execute a bash command",
+        )
+
+    def _get_declaration(self) -> FunctionDeclaration:
+        return FunctionDeclaration(
+            name=self.name,
+            description=self.description,
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"}
+                },
+                "required": ["command"],
+            },
+        )
+
+    async def run_async(self, *, args, tool_context):
+        return await execute(args["command"])
+```
+
+**Pattern:** `FunctionTool` wraps plain functions automatically. `BaseTool` ABC for complex tools. Schema auto-generated from type hints via Pydantic `create_model()`.
+
+</TabItem>
+<TabItem value="openai" label="OpenAI Agents">
+
+```python
+# Decorator-based — schema inferred from signature
+@function_tool
+def get_weather(
+    city: Annotated[str, "The city to look up"],
+) -> Weather:
+    """Get current weather for a city."""
+    return Weather(city=city, temp="20C")
+
+# With full options
+@function_tool(
+    name_override="weather",
+    needs_approval=True,
+    timeout_seconds=30,
+    tool_input_guardrails=[validate_city],
+    tool_output_guardrails=[filter_pii],
+)
+async def get_weather_safe(city: str) -> dict:
+    ...
+```
+
+**Pattern:** `@function_tool` decorator creates `FunctionTool` dataclass. Schema from function signature via Pydantic. No base class hierarchy — uses a Union type for all tool kinds.
+
+</TabItem>
+<TabItem value="langchain" label="LangChain">
+
+```python
+# Decorator — the simplest path
+@tool
+def search(query: str) -> str:
+    """Search the web for information.
+
+    Args:
+        query: The search query string.
+    """
+    return do_search(query)
+
+# StructuredTool — for multi-arg tools with explicit schema
+class SearchInput(BaseModel):
+    query: str = Field(description="Search query")
+    limit: int = Field(default=5, description="Max results")
+
+search_tool = StructuredTool.from_function(
+    func=search,
+    name="search",
+    description="Search the web",
+    args_schema=SearchInput,
+)
+```
+
+**Pattern (v1.2+):** `@tool` decorator or `StructuredTool`. Schema from Pydantic v2 models or auto-inferred from function signatures. Supports `parse_docstring=True` for Google-style docstrings and `response_format="content_and_artifact"` for rich outputs.
+
+</TabItem>
+<TabItem value="langgraph" label="LangGraph">
+
+```python
+# LangGraph uses LangChain's @tool decorator,
+# but adds state injection via annotations
+@tool
+def search_with_context(
+    query: str,
+    messages: Annotated[list, InjectedState("messages")],
+    store: Annotated[Any, InjectedStore()],
+) -> str:
+    """Search with conversation context.
+
+    Args:
+        query: Search query.
+        messages: Injected from graph state (hidden from model).
+        store: Persistent storage (hidden from model).
+    """
+    store.put(("searches",), query, {"timestamp": now()})
+    return do_search(query, context=messages[-3:])
+
+# Executed via ToolNode in the graph
+tool_node = ToolNode(
+    [search_with_context],
+    handle_tool_errors=True,
+)
+```
+
+**Pattern (v1.0+):** Same `@tool` as LangChain but with `InjectedState`/`InjectedStore`/`ToolRuntime` annotations for graph integration. `ToolNode` handles execution, parallel dispatch, error handling, and `wrap_tool_call` middleware.
+
+</TabItem>
+<TabItem value="claude-sdk" label="Claude SDK">
+
+```python
+# @tool decorator with explicit schema
+@tool("read_file", "Read a file from disk", {"path": str})
+async def read_file(args: dict) -> dict:
+    content = open(args["path"]).read()
+    return {
+        "content": [{"type": "text", "text": content}]
+    }
+
+# Register with MCP server
+server = create_sdk_mcp_server(
+    name="my-tools",
+    tools=[read_file],
+)
+
+# Use in agent
+options = ClaudeAgentOptions(
+    mcp_servers={"tools": server},
+    allowed_tools=["mcp__tools__read_file"],
+)
+```
+
+**Pattern:** `@tool` decorator wrapping async functions. Tools are MCP servers under the hood — Claude Code itself is the execution engine. Schema from Python types or raw JSON Schema dicts.
+
+</TabItem>
+</Tabs>
+
+## Input Validation
+
+How does each framework ensure the model sends valid arguments?
+
+| Framework | Schema System | Validation | Strict Mode |
+|-----------|--------------|------------|-------------|
+| **Claude Code** | Zod (internal) → JSON Schema (API) | Zod `.parse()` wrapping `call()` | JSON Schema sent to model |
+| **Google ADK** | Pydantic `create_model()` → JSON Schema | `model_validate()` + mandatory arg checks | FunctionDeclaration schema |
+| **OpenAI Agents** | Pydantic from signature → JSON Schema | Pydantic parse + `ensure_strict_json_schema()` | Strict by default |
+| **LangChain** | Pydantic v2 BaseModel | Pydantic model validation | Optional `args_schema` |
+| **LangGraph** | Same as LangChain | Same + injected arg filtering | Same |
+| **Claude SDK** | Python types → JSON Schema | Type conversion at schema level | JSON Schema pass-through |
+
+:::info Key difference
+Claude Code validates **at execution time** with Zod inside `buildTool()`. Most Python frameworks validate **at schema creation time** with Pydantic and rely on the model respecting the JSON Schema.
+:::
+
+## Permission & Safety
+
+This is where frameworks diverge most. Claude Code has the most layered permission system of any framework:
+
+<ArchDiagram>
+  <ArchLayer label="Claude Code">
+    <ArchBox accent>Permission modes</ArchBox>
+    <ArchBox accent>Bash classifier</ArchBox>
+    <ArchBox accent>Pre/post hooks</ArchBox>
+    <ArchBox accent>isDestructive()</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="OpenAI Agents">
+    <ArchBox>Input guardrails</ArchBox>
+    <ArchBox>Output guardrails</ArchBox>
+    <ArchBox>needs_approval</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Google ADK">
+    <ArchBox>require_confirmation</ArchBox>
+    <ArchBox>BashToolPolicy</ArchBox>
+    <ArchBox>Before/after callbacks</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="LangChain / LangGraph">
+    <ArchBox>handle_tool_errors</ArchBox>
+    <ArchBox>Error type filtering</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Claude SDK">
+    <ArchBox>can_use_tool callback</ArchBox>
+    <ArchBox>Permission modes</ArchBox>
+    <ArchBox>allowed/disallowed lists</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+<Tabs>
+<TabItem value="claude" label="Claude Code" default>
+
+```typescript
+// 4-layer permission system:
+// 1. Permission mode (default, auto, plan, bypassPermissions)
+// 2. Per-tool rules (allow Bash(git *), deny Bash(rm *))
+// 3. Bash safety classifier (auto mode only)
+// 4. Pre-tool hooks (user shell commands that can veto)
+
+// Each tool declares its own safety profile:
+isReadOnly(input) { return true }           // No side effects
+isDestructive(input) { return false }       // Not dangerous
+isConcurrencySafe(input) { return true }    // Can run in parallel
+checkPermissions(input, ctx) { return { allowed: true } }
+```
+
+</TabItem>
+<TabItem value="adk" label="Google ADK">
+
+```python
+# Tool-level confirmation
+tool = FunctionTool(
+    my_func,
+    require_confirmation=True,  # or a callable
+)
+
+# Command-level policy
+bash_tool = ExecuteBashTool(
+    policy=BashToolPolicy(
+        allowed_command_prefixes=("git", "ls", "cat")
+    )
+)
+
+# Before/after/error callbacks on the agent
+agent = LlmAgent(
+    tools=[tool],
+    before_tool_callback=my_before_hook,
+    after_tool_callback=my_after_hook,
+    on_tool_error_callbacks=[my_error_hook],
+)
+```
+
+</TabItem>
+<TabItem value="openai" label="OpenAI Agents">
+
+```python
+# Input guardrails — run before tool execution
+@tool_input_guardrail
+def block_sensitive(data: ToolInputGuardrailData):
+    if "password" in str(data.context.tool_arguments):
+        return ToolGuardrailFunctionOutput.reject_content(
+            message="Blocked: contains sensitive data"
+        )
+    return ToolGuardrailFunctionOutput.allow()
+
+# Output guardrails — run after tool execution
+@tool_output_guardrail
+def filter_pii(data: ToolOutputGuardrailData):
+    if "ssn" in str(data.output).lower():
+        return ToolGuardrailFunctionOutput.raise_exception()
+    return ToolGuardrailFunctionOutput.allow()
+
+# Approval gate
+@function_tool(needs_approval=True)
+async def delete_file(path: str): ...
+```
+
+</TabItem>
+<TabItem value="langchain" label="LangChain / LangGraph">
+
+```python
+# Error handling on ToolNode (LangGraph v1.0+)
+tool_node = ToolNode(
+    tools,
+    # True: catch all, return error message
+    # str: custom error message
+    # Callable: custom handler
+    # type[Exception]: catch specific types
+    handle_tool_errors=True,
+)
+
+# Tool call middleware — intercept, modify, retry (LangGraph v1.0+)
+def audit_wrapper(
+    request: ToolCallRequest,
+    execute: Callable,
+) -> ToolMessage:
+    log(f"Tool: {request.tool_call['name']}, args: {request.tool_call['args']}")
+    return execute(request)
+
+tool_node = ToolNode(tools, wrap_tool_call=audit_wrapper)
+
+# No built-in permission/approval system —
+# typically handled via human-in-the-loop graph interrupts
+```
+
+</TabItem>
+<TabItem value="claude-sdk" label="Claude SDK">
+
+```python
+# Permission callback — full control over every tool call
+async def my_permissions(
+    tool_name: str,
+    input_data: dict,
+    context: ToolPermissionContext,
+) -> PermissionResultAllow | PermissionResultDeny:
+    if tool_name == "Bash" and "rm" in input_data.get("command", ""):
+        return PermissionResultDeny(message="Dangerous command")
+
+    # Can modify input before execution
+    if tool_name == "Write":
+        return PermissionResultAllow(
+            updated_input={"file_path": sanitize(input_data["file_path"])}
+        )
+
+    return PermissionResultAllow()
+
+options = ClaudeAgentOptions(
+    can_use_tool=my_permissions,
+    permission_mode="default",
+)
+```
+
+</TabItem>
+</Tabs>
+
+## Parallel Execution
+
+Can the framework run multiple tool calls at the same time?
+
+| Framework | Parallel? | Mechanism | Safety Partitioning |
+|-----------|-----------|-----------|---------------------|
+| **Claude Code** | Yes | `Promise.all` for safe tools, serial for unsafe | `isConcurrencySafe()` per tool |
+| **Google ADK** | Yes | `asyncio.gather()` for all tools | No partitioning — all parallel |
+| **OpenAI Agents** | Yes | `asyncio.wait()` with batch executor | Sibling cancellation on failure |
+| **LangChain** | Yes | `ThreadPoolExecutor` (sync) / `asyncio.gather` (async) | No partitioning |
+| **LangGraph** | Yes | Same as LangChain via `ToolNode` | No partitioning |
+| **Claude SDK** | Via Claude Code | Delegates to Claude Code's executor | Inherits Claude Code's partitioning |
+
+:::info Key difference
+Claude Code is the **only framework** that partitions tools into safe (parallel) and unsafe (serial) groups based on each tool's `isConcurrencySafe()` declaration. All other frameworks run everything in parallel and rely on the model to avoid conflicting calls.
+:::
+
+## Comparison Matrix
+
+| Feature | Claude Code | Google ADK | OpenAI Agents | LangChain | LangGraph | Claude SDK |
+|---------|:-----------:|:----------:|:-------------:|:---------:|:---------:|:----------:|
+| **Schema system** | Zod | Pydantic | Pydantic | Pydantic | Pydantic | JSON Schema |
+| **Auto-infer schema** | No (explicit) | Yes (type hints) | Yes (signature) | Yes (signature) | Yes (signature) | No (explicit) |
+| **Permission system** | 4-layer | Confirmation + policy | Guardrails + approval | Error handling only | Error handling + middleware | Callback + modes |
+| **Bash safety** | Classifier | Prefix allowlist | Via guardrails | None | None | Via callback |
+| **Pre-execution hooks** | Shell hooks | Before callbacks | Input guardrails | None | `wrap_tool_call` | None |
+| **Post-execution hooks** | Shell hooks | After callbacks | Output guardrails | None | `wrap_tool_call` | None |
+| **Parallel execution** | Safe/unsafe split | All parallel | All parallel | All parallel | All parallel | Inherited |
+| **Progress streaming** | `onProgress()` | Async generators | None | None | `StreamWriter` | None |
+| **Tool count** | 40+ built-in | ~10 built-in | ~10 built-in | Community tools | Via LangChain | Via MCP |
+| **Read-only flag** | `isReadOnly()` | None | None | None | None | `readOnly` annotation |
+| **Destructive flag** | `isDestructive()` | None | None | None | None | `destructive` annotation |
+| **State injection** | Via `ToolContext` | Via `ToolContext` | Via `ToolContext` | `InjectedState` | `InjectedState/Store` | Via MCP context |
+
+## The Takeaway
+
+Claude Code's tool system is **uniquely deep** compared to other frameworks:
+
+- It's the only one with **built-in safety partitioning** (read-only vs. write tools)
+- It has the **richest permission model** (4 layers vs. 1-2 in others)
+- It ships with **40+ production-grade tools** vs. a handful in other frameworks
+- It's the only one with **streaming progress** from individual tool executions
+
+Other frameworks optimize for **developer ergonomics** — auto-infer schemas from type hints, minimal boilerplate, decorator-based. Claude Code optimizes for **production safety** — explicit schemas, layered permissions, concurrency partitioning.

@@ -1,0 +1,306 @@
+---
+sidebar_position: 8
+title: Framework Comparison
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Agent Loop — Framework Comparison
+
+The agent loop powering Claude Code isn't unique — it's a **universal pattern** found in every major agentic framework. But each framework wraps it differently.
+
+This page compares Claude Code's loop against five popular frameworks, with real code from their source repos.
+
+## The Universal Pattern
+
+Every tool-using LLM framework implements a variant of:
+
+<FlowDiagram>
+  <Node icon="📥" variant="primary">User gives instruction</Node>
+  <Conn />
+  <Node icon="🧠">LLM reasons + decides on tool calls</Node>
+  <Conn />
+  <Node icon="🔧">Execute tool(s)</Node>
+  <Conn />
+  <Node icon="📋">Feed results back to LLM</Node>
+  <Conn />
+  <Node icon="🔄" variant="purple">Repeat until done</Node>
+</FlowDiagram>
+
+The differences are in **how** each framework implements this loop, what's built around it, and how much control you have.
+
+## Claude Code
+
+**Loop style:** Imperative `while (true)` with streaming tool execution
+
+The loop lives in `src/query.ts` — a ~1,900-line async generator that yields events as they stream:
+
+```typescript
+// src/query.ts (simplified)
+async function* queryLoop(params) {
+  while (true) {
+    // Call LLM with streaming
+    for await (const event of callModel(messages, tools)) {
+      if (event.type === 'text') yield event        // Render text immediately
+      if (event.type === 'tool_use') toolCalls.push(event)  // Collect tool calls
+    }
+
+    if (toolCalls.length === 0) break  // No tools → done (end_turn)
+
+    // Execute tools (parallel for read-only, serial for writes)
+    const results = await runTools(toolCalls, canUseTool)
+    messages.push(...results)
+
+    // Loop continues — next LLM call sees tool results
+  }
+}
+```
+
+**What's unique:**
+- Streaming tool execution — tools start running before the full response arrives
+- Read-only/write concurrency partitioning via `isConcurrencySafe()`
+- Multi-layer permission middleware (modes → rules → classifier → hooks → UI dialog)
+- Automatic compaction when context overflows
+
+
+## Google ADK
+
+**Loop style:** Imperative `while True` with event-based steps
+
+The loop lives in `src/google/adk/flows/llm_flows/base_llm_flow.py`:
+
+```python
+# base_llm_flow.py — run_async (simplified)
+async def run_async(self, invocation_context):
+    while True:
+        last_event = None
+        async for event in self._run_one_step_async(invocation_context):
+            last_event = event
+            yield event
+        # Stop if final response (no tool calls) or no event
+        if not last_event or last_event.is_final_response():
+            break
+```
+
+Each step calls the LLM, checks for function calls, and executes them:
+
+```python
+# _run_one_step_async (simplified)
+async def _run_one_step_async(self, invocation_context):
+    llm_request = LlmRequest()
+    # Preprocess: build request, resolve tool auth
+    async for event in self._preprocess_async(invocation_context, llm_request):
+        yield event
+    # Call LLM
+    async for response in self._call_llm_async(invocation_context, llm_request):
+        # Postprocess: detect and execute tool calls
+        async for event in self._postprocess_async(invocation_context, response):
+            yield event
+```
+
+**Key differences from Claude Code:**
+- Tool calls executed in parallel via `asyncio.gather()` in `handle_function_calls_async`
+- Before/after tool callbacks (similar to Claude Code's hooks)
+- Has auth-request interrupts and a tool confirmation system (`request_confirmation`) — lighter than Claude Code's multi-layer permissions
+- Sub-agent support via agent-as-tool pattern
+
+
+## OpenAI Agents SDK
+
+**Loop style:** Imperative `while True` with turn-based state machine
+
+The loop lives in `src/agents/run_internal/run_loop.py`:
+
+```python
+# run_loop.py — start_streaming (simplified)
+async def start_streaming(agent, input, hooks, context, run_config):
+    current_agent = agent
+    while True:
+        all_tools = await get_all_tools(current_agent, context)
+        turn_result = await run_single_turn_streamed(
+            current_agent, hooks, context, run_config, all_tools
+        )
+
+        if isinstance(turn_result.next_step, NextStepFinalOutput):
+            break                      # Done — agent produced final output
+        elif isinstance(turn_result.next_step, NextStepHandoff):
+            current_agent = turn_result.next_step.new_agent  # Switch agent
+        elif isinstance(turn_result.next_step, NextStepRunAgain):
+            continue                   # Tools executed, re-query
+        elif isinstance(turn_result.next_step, NextStepInterruption):
+            break                      # Needs approval — pause
+```
+
+**Key differences from Claude Code:**
+- **Handoffs** — agents can transfer control to other agents mid-loop (Claude Code spawns sub-agents instead)
+- **Interruptions** — built-in pause/resume for tool approval (`needs_approval` on tools)
+- **Tool approvals** — `needs_approval` field on tools triggers `NextStepInterruption` for human review (separate from guardrails which validate inputs/outputs)
+- No streaming tool execution — tools run after full response
+- No concurrency partitioning — tools run based on SDK defaults
+
+
+## LangChain (v1 — `create_agent`)
+
+**Loop style:** Graph-based via LangGraph under the hood, with middleware
+
+In LangChain v1, the recommended entry point is `create_agent()` from `langchain.agents`. Internally it builds a LangGraph `StateGraph` with model + `ToolNode` nodes:
+
+```python
+# langchain v1 — create_agent (simplified from factory.py)
+from langchain.agents import create_agent
+
+agent = create_agent(
+    model="anthropic:claude-sonnet-4-20250514",
+    tools=[search, calculator],
+    system_prompt="You are a helpful assistant.",
+    middleware=[my_middleware],       # intercept model/tool calls
+    interrupt_before=["tools"],      # human-in-the-loop
+    checkpointer=memory,             # state persistence
+)
+
+# Under the hood, this builds:
+#   StateGraph with "agent" (model) + "tools" (ToolNode) nodes
+#   Conditional edge: agent → tools (if tool_calls) or END
+#   Edge: tools → agent (loop back)
+```
+
+```python
+# The graph loop it builds (simplified):
+workflow = StateGraph(AgentState)
+workflow.add_node("agent", call_model)       # LLM call
+workflow.add_node("tools", ToolNode(tools))  # Parallel tool execution
+workflow.add_conditional_edges("agent", should_continue)
+workflow.add_edge("tools", "agent")          # Loop back
+```
+
+**Key differences from Claude Code:**
+- **Declarative graph** vs imperative loop — built on LangGraph's `StateGraph`
+- **Middleware system** — `wrap_model_call` and `wrap_tool_call` for interception
+- **ToolNode** executes tools in parallel via thread pool / `asyncio.gather`
+- **Human-in-the-loop** via graph interrupts (`interrupt_before=["tools"]`)
+- **Checkpointing** — graph state can be persisted and resumed
+- No streaming tool execution or concurrency partitioning
+
+:::info Legacy note
+LangChain's older `AgentExecutor` (in `langchain-classic`) used ReAct-style text parsing and an imperative `while` loop. It's still importable for backwards compatibility but is no longer the recommended pattern. Use `create_agent()` for new projects.
+:::
+
+
+## LangGraph
+
+**Loop style:** Graph-based state machine with conditional edges
+
+Both LangChain's `create_agent()` and LangGraph's lower-level API build the same graph structure internally:
+
+```python
+# What create_agent() builds under the hood (simplified)
+workflow = StateGraph(AgentState)
+
+# Two nodes: "agent" (LLM) and "tools" (executor)
+workflow.add_node("agent", call_model)
+workflow.add_node("tools", ToolNode(tools))
+
+workflow.set_entry_point("agent")
+
+# Conditional edge: agent → tools (if tool calls) or END (if done)
+workflow.add_conditional_edges("agent", should_continue)
+
+# Always loop back: tools → agent
+workflow.add_edge("tools", "agent")
+
+return workflow.compile()
+```
+
+The decision function:
+
+```python
+def should_continue(state):
+    last_message = state["messages"][-1]
+    # If no tool calls, we're done
+    if not last_message.tool_calls:
+        return END
+    # Otherwise, route to tools
+    return "tools"  # or [Send(...) for call in tool_calls] in v2
+```
+
+**Key differences from Claude Code:**
+- **Declarative graph** vs imperative loop — you define nodes and edges, the framework runs the loop
+- **ToolNode** executes tools in parallel via thread pool (`executor.map`)
+- **Human-in-the-loop** via graph interrupts (`interrupt_before=["tools"]`)
+- **Checkpointing** — graph state can be persisted and resumed
+- No streaming tool execution or concurrency partitioning
+
+
+## Claude Agent SDK (Python)
+
+**Loop style:** Subprocess communication — the SDK wraps Claude Code's own loop
+
+The loop lives in `claude_agent_sdk/_internal/query.py`:
+
+```python
+# query.py — receive_messages (simplified)
+async def receive_messages(self) -> AsyncIterator[dict]:
+    async for message in self._message_receive:
+        if message.get("type") == "end":
+            break                    # CLI signaled completion
+        elif message.get("type") == "error":
+            raise Exception(message.get("error"))
+        yield message                # Yield to caller
+```
+
+The SDK doesn't reimplement the loop — it spawns Claude Code as a subprocess and communicates via JSON-RPC over stdin/stdout:
+
+```python
+# quick_start.py — minimal usage
+from claude_agent_sdk import query, AssistantMessage, TextBlock
+
+async def main():
+    async for message in query(prompt="What is 2 + 2?"):
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    print(f"Claude: {block.text}")
+```
+
+**Key differences:**
+- **Not a reimplementation** — delegates to the actual Claude Code CLI process
+- **Full feature parity** — compaction, permissions, hooks, sub-agents all work
+- **Permission callbacks** — SDK provides `can_use_tool` callback for programmatic approval
+- **Bidirectional control protocol** — SDK can respond to permission requests in real-time
+
+
+## Comparison Matrix
+
+| Feature | Claude Code | Google ADK | OpenAI SDK | LangChain | LangGraph | Claude SDK |
+|---------|:-:|:-:|:-:|:-:|:-:|:-:|
+| **Loop style** | while + stream | while + events | while + turns | Graph (via LangGraph) | Graph edges | Subprocess |
+| **Streaming text** | Yes | Yes | Yes | Yes (via LangGraph) | Yes | Yes |
+| **Streaming tool exec** | Yes | No | No | No | No | Yes |
+| **Parallel tools** | Read-only only | All parallel | SDK default | Thread pool / gather | Thread pool / gather | Yes |
+| **Permission system** | Multi-layer | Auth + confirm | Tool approvals | Middleware + interrupts | Interrupts | Callback |
+| **Approval UI** | Built-in | Confirmation | HITL | HITL | HITL | Callback |
+| **Sub-agents** | Agent tool | Agent-as-tool | Handoffs | Nested chains | Subgraphs | Agent tool |
+| **Context compaction** | Auto 3-level | No | No | No | No | Auto |
+| **Max iterations** | max_turns | No limit | max_turns | max_iterations | Recursive limit | max_turns |
+| **State checkpointing** | Session files | No | Session store | No | Checkpointer | Session files |
+
+## The Takeaway
+
+The agent loop is a **design pattern, not an invention**. It's the natural result of how tool-use APIs work — the model says "call this tool", you execute it, you send back the result, and the model decides what to do next.
+
+What differentiates frameworks is everything **around** the loop:
+
+<ArchDiagram>
+  <ArchLayer label="What's the same everywhere">
+    <ArchBox accent>LLM Call → Tool Detection → Execute → Results → Repeat</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Where frameworks differ">
+    <ArchBox>Scheduling</ArchBox>
+    <ArchBox>Permissions</ArchBox>
+    <ArchBox>Context Mgmt</ArchBox>
+    <ArchBox>Delegation</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+Claude Code's distinctive contributions are **streaming tool execution**, **read-only/write concurrency partitioning**, **multi-layer permissions**, and **automatic compaction** — features that live around the universal loop, not inside it.

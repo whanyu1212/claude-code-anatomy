@@ -1,0 +1,215 @@
+/* ================================================================
+   Task Board — Interactive task lifecycle visualization
+   ================================================================ */
+
+.container {
+  margin: 1.5rem 0;
+  background: #0a0a0a;
+  border: 1px solid #2e2e2e;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+[data-theme='light'] .container {
+  background: #fafafa;
+  border-color: #e0e0e0;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #161616;
+  border-bottom: 1px solid #2e2e2e;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+[data-theme='light'] .header {
+  background: #f0f0f0;
+  border-color: #e0e0e0;
+}
+
+.headerTitle {
+  font-weight: 600;
+  color: #2dd4bf;
+}
+
+[data-theme='light'] .headerTitle {
+  color: #0d9488;
+}
+
+.headerCount {
+  color: #52525b;
+  font-size: 11px;
+}
+
+/* Task list */
+.body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Individual task row */
+.task {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #1e1e1e;
+  background: #111111;
+  transition: all 0.3s ease;
+}
+
+[data-theme='light'] .task {
+  background: #ffffff;
+  border-color: #e8e8e8;
+}
+
+/* Status indicator */
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotPending {
+  background: #52525b;
+  border: 2px solid #71717a;
+}
+
+.dotRunning {
+  background: #2dd4bf;
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(45, 212, 191, 0.4); }
+  50% { box-shadow: 0 0 10px rgba(45, 212, 191, 0.7); }
+}
+
+.dotCompleted {
+  background: #4eba65;
+}
+
+.dotFailed {
+  background: #f43f5e;
+}
+
+.dotKilled {
+  background: #fbbf24;
+}
+
+/* Task content */
+.taskContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.taskName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d4d8;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[data-theme='light'] .taskName {
+  color: #111111;
+}
+
+.taskDesc {
+  font-size: 11px;
+  color: #71717a;
+  margin-top: 2px;
+}
+
+/* Task type badge */
+.typeBadge {
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.typeBash {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.typeAgent {
+  background: rgba(45, 212, 191, 0.08);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  color: #2dd4bf;
+}
+
+.typeRemote {
+  background: rgba(192, 132, 252, 0.08);
+  border: 1px solid rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+}
+
+.typeWorkflow {
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+/* Status text */
+.statusText {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.statusRunning { color: #2dd4bf; }
+.statusCompleted { color: #4eba65; }
+.statusFailed { color: #f43f5e; }
+.statusPending { color: #52525b; }
+.statusKilled { color: #fbbf24; }
+
+/* Notification popup */
+.notification {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 186, 101, 0.2);
+  background: rgba(78, 186, 101, 0.04);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #4eba65;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-top: 1px solid #1e1e1e;
+  background: #0e0e0e;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #52525b;
+}
+
+[data-theme='light'] .footer {
+  background: #f5f5f5;
+  border-color: #e0e0e0;
+}

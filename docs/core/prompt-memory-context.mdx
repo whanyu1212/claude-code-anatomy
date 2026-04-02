@@ -1,0 +1,395 @@
+---
+sidebar_position: 5
+title: Prompt, Memory & Context
+---
+
+import SystemPromptStack from '@site/src/components/SystemPromptStack';
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group } from '@site/src/components/Diagrams';
+import { ContextWindowGauge, CompactionDemo } from '@site/src/components/ContextWindow';
+
+# Prompt, Memory & Context
+
+Everything the model sees when it processes a turn — the system prompt, your project context, persistent memory, and how it all fits within the context window.
+
+## System Prompt Assembly
+
+Before every API call, the [Agent Loop](./agent-loop.mdx) assembles a **system prompt** from 7 layers. This isn't a static string — it's rebuilt dynamically each turn:
+
+<SystemPromptStack />
+
+### 1. Base Prompt
+
+The foundation — Claude's identity, tone, behavior rules, and general instructions. Same for every user and project.
+
+<details>
+<summary>View the actual base prompt sections</summary>
+
+**Intro:**
+> You are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+
+**# System** — Rules about tool execution, permissions, tags, prompt injection detection, and context compression.
+
+**# Doing tasks:**
+> - Do not propose changes to code you haven't read.
+> - Do not create files unless absolutely necessary.
+> - Don't add features, refactor code, or make "improvements" beyond what was asked.
+> - Don't add error handling for scenarios that can't happen.
+> - Don't create helpers or abstractions for one-time operations.
+
+**# Executing actions with care:**
+> Carefully consider the reversibility and blast radius of actions. For actions that are hard to reverse or affect shared systems, check with the user before proceeding.
+
+**# Using your tools** — Prefer dedicated tools over Bash (Read instead of cat, Edit instead of sed).
+
+**# Output efficiency:**
+> Go straight to the point. Try the simplest approach first. Be extra concise.
+
+Source: `src/constants/prompts.ts`
+
+</details>
+
+### 2. Tool Definitions
+
+For each of the 44 tools, the model receives a name, description, and JSON Schema.
+
+<details>
+<summary>Example: Bash tool schema</summary>
+
+```json
+{
+  "name": "Bash",
+  "description": "Executes a given bash command and returns its output.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "command":           { "type": "string", "description": "The command to execute" },
+      "description":       { "type": "string", "description": "What this command does" },
+      "timeout":           { "type": "number", "description": "Timeout in ms (max 600000)" },
+      "run_in_background": { "type": "boolean", "description": "Run in background" }
+    },
+    "required": ["command"]
+  }
+}
+```
+
+</details>
+
+See [Tool Definitions](/appendix/tool-definitions) in the Appendix for all 44 schemas.
+
+### 3. Permission Context
+
+Current permission mode, allow/deny rules, and enterprise policy limits. This shapes the model's behavior — it won't suggest tools it knows will be denied.
+
+### 4. CLAUDE.md Content
+
+Your project-specific instructions, merged from up to 4 file layers.
+
+<details>
+<summary>Example: A typical project CLAUDE.md</summary>
+
+```markdown
+# Project: my-saas-app
+
+## Architecture
+- Monorepo with Next.js frontend and Express API
+- PostgreSQL database with Prisma ORM
+- Tests use Vitest, not Jest
+
+## Conventions
+- Use `pnpm`, not `npm` or `yarn`
+- All API routes go in `src/api/routes/`
+- Use snake_case for database columns, camelCase for TypeScript
+
+## Key Files
+- `src/api/routes/index.ts` — API route registry
+- `prisma/schema.prisma` — Database schema
+```
+
+</details>
+
+See [CLAUDE.md Layers](#claudemd-layer-system) below for the full merge system.
+
+### 5. System Context
+
+Runtime environment info: git status, OS, shell, working directory, IDE.
+
+<details>
+<summary>Example: What gets injected</summary>
+
+```
+# Environment
+- Primary working directory: /Users/you/my-project
+  - Is a git repository: true
+- Platform: darwin
+- Shell: zsh
+- OS Version: Darwin 24.1.0
+
+gitStatus: Current branch: feature/auth-fix
+Status: M src/auth.ts
+```
+
+</details>
+
+### 6. Plugin Prompts
+
+Loaded plugins can inject custom instructions.
+
+<details>
+<summary>Example: Plugin prompt injection</summary>
+
+```markdown
+# Plugin: company-standards
+
+When writing code for this organization:
+- Always add copyright headers to new files
+- Use the internal logging library instead of console.log
+- All API endpoints must have OpenAPI annotations
+```
+
+</details>
+
+### 7. Skill Content
+
+When you invoke `/commit` or `/review-pr`, its prompt template is injected.
+
+<details>
+<summary>Example: The /commit skill prompt</summary>
+
+```markdown
+Only create commits when requested by the user. Follow these steps:
+1. Run git status and git diff to see all changes
+2. Run git log to see recent commit message style
+3. Draft a concise commit message focusing on "why" not "what"
+4. Stage relevant files and create the commit
+5. Run git status after to verify success
+
+Important:
+- NEVER push to remote unless explicitly asked
+- NEVER use git commands with -i flag (interactive)
+```
+
+</details>
+
+## CLAUDE.md Layer System
+
+Claude Code assembles persistent context from multiple CLAUDE.md files on disk:
+
+<FlowDiagram>
+  <Node icon="🏢" variant="subtle">Enterprise / Managed CLAUDE.md</Node>
+  <Conn size="short" />
+  <Node icon="🌐" variant="subtle">~/.claude/CLAUDE.md (Global)</Node>
+  <Conn size="short" />
+  <Node icon="📁" variant="primary">project-root/CLAUDE.md (Project)</Node>
+  <Conn size="short" />
+  <Node icon="💻" variant="primary">.claude/CLAUDE.md (Local)</Node>
+  <Conn />
+  <Node icon="🔀" variant="highlight">Merged CLAUDE.md Content</Node>
+  <Conn />
+  <Node icon="📝" variant="success">Injected into System Prompt (layer 4)</Node>
+</FlowDiagram>
+
+| Layer | Location | Scope | Typical Content |
+|-------|----------|-------|-----------------|
+| **Enterprise** | Managed by org admin | Organization-wide | Policies, compliance rules |
+| **Global** | `~/.claude/CLAUDE.md` | All projects | Personal preferences, coding style |
+| **Project** | `CLAUDE.md` in repo root | This project | Architecture, conventions, key files |
+| **Local** | `.claude/CLAUDE.md` | This machine + project | Local setup notes |
+
+Layers are concatenated in order (enterprise first, local last). Later layers can override or supplement earlier ones.
+
+## Auto Memory
+
+Claude automatically stores useful information learned during conversations in `~/.claude/projects/<project-hash>/memory/`:
+
+| Type | What's Stored | Example |
+|------|---------------|---------|
+| **user** | Role, preferences, expertise | "Senior Go engineer, new to React" |
+| **feedback** | Corrections and confirmed approaches | "Don't mock the database in tests" |
+| **project** | Ongoing work, goals, deadlines | "Merge freeze begins 2026-03-05" |
+| **reference** | Pointers to external resources | "Pipeline bugs in Linear project INGEST" |
+
+<details>
+<summary>Memory file format</summary>
+
+```markdown
+---
+name: user_role
+description: User is a data scientist focused on logging
+type: user
+---
+
+User is a data scientist investigating observability and logging infrastructure.
+```
+
+An index file (`MEMORY.md`) maintains pointers to all memory files.
+
+</details>
+
+**What's NOT stored:** Code patterns (read the codebase), git history (use `git log`), debugging solutions (the fix is in the code), anything already in CLAUDE.md.
+
+## Session Memory
+
+During a conversation, transient state is tracked in memory:
+- **Conversation history** — all messages exchanged
+- **Tool results** — outputs from tool executions
+- **Task state** — background tasks and their status
+- **Compaction summaries** — condensed history from compaction passes
+
+Session memory is lost when the conversation ends, unless explicitly saved to auto-memory.
+
+## Context Window & Compaction
+
+Every model has a fixed context window (e.g., 200K tokens). The system prompt alone consumes ~5%. As conversation grows, the engine must keep everything within budget:
+
+<ContextWindowGauge />
+
+When conversation history exceeds the available space, **compaction** kicks in — older messages are summarized to free up room. Click between "Before" and "After" to see how it works:
+
+<CompactionDemo />
+
+### What's Preserved
+
+Even during aggressive compaction, the engine always keeps:
+- Your most recent messages (verbatim)
+- Tool results that are still being referenced
+- Key decisions and explicit user instructions
+
+## How Other Frameworks Compare
+
+Claude Code's 7-layer dynamic assembly is unusually comprehensive:
+
+| Framework | Assembly | Tool Injection | Custom Context | Extensibility |
+|-----------|----------|:-:|:-:|:-:|
+| **Claude Code** | 7-layer dynamic | Auto | File-based (CLAUDE.md) | Plugins + Skills |
+| **Google ADK** | 4-layer | Manual | Template variables | GlobalInstructionPlugin |
+| **OpenAI Agents** | String or callable | Manual | None built-in | None |
+| **LangChain** | Middleware composition | Manual | Via middleware | Middleware stacking |
+| **LangGraph** | String or callable | Manual | None built-in | Pre/post hooks |
+
+<details>
+<summary>What each framework does differently</summary>
+
+**Google ADK** is the closest — 4 instruction layers (global, static, dynamic, state injection). But no auto tool injection or file discovery.
+
+**OpenAI Agents SDK** — instructions are a string or async callable. No layers, no auto-injection.
+
+**LangChain** — middleware approach via `wrap_model_call`. Flexible but nothing built-in.
+
+**LangGraph** — single string/callable prompt. Focus is on graph structure, not prompt composition.
+
+</details>
+
+## SDK Mode
+
+The prompt assembly also powers headless mode (`QueryEngine.ts`) for the Claude Agent SDK and sub-agents:
+
+```typescript
+const engine = new QueryEngine({ model, tools, systemPrompt })
+const result = await engine.query(messages)
+```
+
+```python
+# Python equivalent
+from claude_agent_sdk import query
+
+async for message in query(prompt="Fix the bug"):
+    print(message)
+```
+
+## Dream (Memory Consolidation)
+
+Dream is a background process that periodically reviews recent session transcripts and consolidates learnings into the memory directory — like the system "sleeping" to organize what it's learned.
+
+### Gate Sequence
+
+Dream runs as a forked sub-agent, but only after passing a series of gates (cheapest checks first):
+
+<FlowDiagram>
+  <Node icon="🔍">Pre-checks: not Kairos, not remote, auto-memory enabled</Node>
+  <Conn />
+  <Node icon="⚙️">isAutoDreamEnabled() — settings.json or GrowthBook</Node>
+  <Conn />
+  <Node icon="⏰">Time gate: 24+ hours since last consolidation</Node>
+  <Conn />
+  <Node icon="🔄">Scan throttle: 10+ minutes since last session scan</Node>
+  <Conn />
+  <Node icon="📋">Session gate: 5+ sessions since last (excluding current)</Node>
+  <Conn />
+  <Node icon="🔒" variant="warning">Lock: no other process consolidating (PID-verified)</Node>
+  <Conn />
+  <Node icon="💤" variant="primary">Fire — spawn forked agent with consolidation prompt</Node>
+</FlowDiagram>
+
+```typescript title="src/services/autoDream/autoDream.ts (simplified)"
+const DEFAULTS = {
+  minHours: 24,       // Hours between consolidation runs
+  minSessions: 5,     // Minimum sessions to trigger
+}
+```
+
+### Consolidation Phases
+
+The forked agent receives a structured prompt with 4 phases:
+
+<FlowDiagram>
+  <Group label="Phase 1 — Orient">
+    <Node icon="📂">Read existing memories and index</Node>
+    <Conn size="short" />
+    <Node variant="subtle">Understand current state before changing anything</Node>
+  </Group>
+  <Conn />
+  <Group label="Phase 2 — Gather">
+    <Node icon="🔍">Check daily logs → drifted memories → narrow transcript grep</Node>
+    <Conn size="short" />
+    <Node variant="subtle">Not exhaustive — look only for what matters</Node>
+  </Group>
+  <Conn />
+  <Group label="Phase 3 — Consolidate">
+    <Node icon="✏️" variant="primary">Write or update memory files</Node>
+    <Conn size="short" />
+    <Node variant="subtle">Merge into existing topics, fix contradictions, convert relative dates</Node>
+  </Group>
+  <Conn />
+  <Group label="Phase 4 — Prune">
+    <Node icon="✂️">Update index, remove stale entries, enforce size limits</Node>
+    <Conn size="short" />
+    <Node variant="subtle">Keep index under ~25KB, one line per entry</Node>
+  </Group>
+</FlowDiagram>
+
+The agent's Bash access is **restricted to read-only commands** (`ls`, `find`, `grep`, `cat`, `stat`, `wc`, `head`, `tail`). It can read and write memory files but cannot execute arbitrary commands.
+
+### Lock Coordination
+
+A file-based lock (`.consolidate-lock` in the memory directory) prevents multiple processes from consolidating simultaneously:
+
+| Property | Value |
+|----------|-------|
+| Lock file **mtime** | Timestamp of last consolidation |
+| Lock file **body** | PID of the holder process |
+| Stale detection | Dead PID or lock >1 hour old → reclaim |
+| Failure rollback | Rewind mtime so time gate passes again |
+
+### Configuration
+
+| Setting | Where | Default |
+|---------|-------|---------|
+| `autoDreamEnabled` | `settings.json` | Follows GrowthBook |
+| `tengu_onyx_plover.enabled` | GrowthBook | `false` |
+| `tengu_onyx_plover.minHours` | GrowthBook | `24` |
+| `tengu_onyx_plover.minSessions` | GrowthBook | `5` |
+
+Dream creates a `DreamTask` (task type `dream`) that appears in the background tasks list, showing progress as the agent works through the phases. Users can also trigger consolidation manually via the `/dream` slash command, which stamps the lock file but runs with normal (non-restricted) permissions.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/query.ts` | System prompt assembly + query loop (~1,900 lines) |
+| `src/QueryEngine.ts` | Headless query execution for SDK/sub-agents |
+| `src/constants/prompts.ts` | Base system prompt templates |
+| `src/utils/claude-md/` | CLAUDE.md loading and merging |
+| `src/memdir/` | Memory directory management |
+| `src/services/compact/` | Compaction algorithms |
+| `src/services/autoDream/` | Dream/auto-consolidation system |
+| `src/tasks/DreamTask/` | Dream task tracking |

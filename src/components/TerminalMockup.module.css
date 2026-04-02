@@ -1,0 +1,264 @@
+/* ================================================================
+   Terminal Mockup — Matching actual Claude Code CLI colors
+   Colors from: src/utils/theme.ts (dark theme)
+   ================================================================ */
+
+.terminal {
+  margin: 1.5rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #2e2e2e;
+  background: #0a0a0a;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+[data-theme='light'] .terminal {
+  border-color: #d4d4d8;
+  background: #1a1a1a;
+}
+
+/* Title bar */
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #161616;
+  border-bottom: 1px solid #2e2e2e;
+}
+
+.dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dotRed { background: #ff5f57; }
+.dotYellow { background: #febc2e; }
+.dotGreen { background: #28c840; }
+
+.titleText {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: #52525b;
+  font-family: 'Geist', system-ui, sans-serif;
+}
+
+/* Content area */
+.content {
+  padding: 16px 18px;
+  overflow-x: auto;
+}
+
+/* Lines */
+.line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 22px;
+}
+
+/* ----------------------------------------------------------------
+   Actual Claude Code Colors (dark theme from theme.ts)
+   ---------------------------------------------------------------- */
+
+/* User label: briefLabelYou = rgb(122,180,232) */
+.userLabel {
+  color: rgb(122, 180, 232);
+  font-weight: 600;
+  white-space: pre;
+  user-select: none;
+}
+
+/* User input text: white */
+.userInput {
+  color: #ffffff;
+}
+
+/* Assistant label: briefLabelClaude = rgb(215,119,87) */
+.assistantLabel {
+  color: rgb(215, 119, 87);
+  font-weight: 600;
+  white-space: pre;
+  user-select: none;
+}
+
+/* Message response prefix: ⎿ dimmed */
+.responsePrefix {
+  color: rgb(80, 80, 80);
+  white-space: pre;
+  user-select: none;
+}
+
+/* Normal assistant text */
+.assistantText {
+  color: #d4d4d8;
+}
+
+/* Subtle / dim text: rgb(80,80,80) */
+.dimText {
+  color: rgb(80, 80, 80);
+}
+
+/* Inactive text: rgb(153,153,153) */
+.mutedText {
+  color: rgb(153, 153, 153);
+}
+
+/* Success: rgb(78,186,101) */
+.successText {
+  color: rgb(78, 186, 101);
+}
+
+/* Error: rgb(255,107,128) */
+.errorText {
+  color: rgb(255, 107, 128);
+}
+
+/* Warning: rgb(255,193,7) */
+.warningText {
+  color: rgb(255, 193, 7);
+}
+
+/* Permission: rgb(177,185,249) */
+.permissionText {
+  color: rgb(177, 185, 249);
+}
+
+/* Claude brand: rgb(215,119,87) */
+.claudeText {
+  color: rgb(215, 119, 87);
+}
+
+/* ----------------------------------------------------------------
+   Tool Box — matches ToolUseLoader style
+   ---------------------------------------------------------------- */
+.toolBox {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #1e1e1e;
+  background: #111111;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tool indicator: ⏺ circle */
+.toolCircle {
+  font-size: 8px;
+}
+
+.toolCircleSuccess {
+  color: rgb(78, 186, 101);
+}
+
+.toolCircleLoading {
+  color: rgb(80, 80, 80);
+}
+
+.toolName {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.toolInput {
+  color: rgb(153, 153, 153);
+}
+
+.toolStatus {
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------------
+   Diff — from theme.ts diff colors
+   ---------------------------------------------------------------- */
+.diffBox {
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px dashed rgb(80, 80, 80);
+  background: #0d0d0d;
+}
+
+/* diffAddedWord: rgb(56,166,96) */
+.diffAdd {
+  color: rgb(56, 166, 96);
+}
+
+/* diffRemovedWord: rgb(179,89,107) */
+.diffRemove {
+  color: rgb(179, 89, 107);
+}
+
+/* diffAdded bg: rgb(34,92,43) */
+.diffAddBg {
+  background: rgba(34, 92, 43, 0.3);
+  color: rgb(56, 166, 96);
+}
+
+/* diffRemoved bg: rgb(122,41,54) */
+.diffRemoveBg {
+  background: rgba(122, 41, 54, 0.3);
+  color: rgb(179, 89, 107);
+}
+
+/* ----------------------------------------------------------------
+   Permission Dialog — borderColor="permission"
+   ---------------------------------------------------------------- */
+.permDialog {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(177, 185, 249, 0.3);
+  background: rgba(177, 185, 249, 0.03);
+}
+
+.permActions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.permBtn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: rgb(153, 153, 153);
+  border: 1px solid rgb(80, 80, 80);
+}
+
+.permBtnActive {
+  border-color: rgb(78, 186, 101);
+  color: rgb(78, 186, 101);
+  background: rgba(78, 186, 101, 0.08);
+}
+
+/* ----------------------------------------------------------------
+   User message background: rgb(55,55,55)
+   ---------------------------------------------------------------- */
+.userMsgBox {
+  background: rgb(55, 55, 55);
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 2px 0;
+}
+
+/* ----------------------------------------------------------------
+   Spacers
+   ---------------------------------------------------------------- */
+.gap {
+  height: 8px;
+}
+
+.gapLarge {
+  height: 16px;
+}

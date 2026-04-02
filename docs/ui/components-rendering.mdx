@@ -1,0 +1,181 @@
+---
+sidebar_position: 1
+title: Components & Rendering
+---
+
+import { FlowDiagram, Node, Conn, Arrow, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Components & Rendering
+
+How Claude Code renders its terminal UI — the React/Ink component architecture, key components, and theming.
+
+## Architecture
+
+Claude Code uses **React** with **Ink** to render a rich terminal UI. Ink translates React components into terminal output using Yoga (flexbox layout engine).
+
+<ArchDiagram>
+  <ArchLayer label="Framework">
+    <ArchBox accent>React 19</ArchBox>
+    <ArchBox accent>Ink 6 — Terminal React Renderer</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Layout">
+    <ArchBox>Yoga Layout Engine (Flexbox)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Output">
+    <ArchBox>Terminal Output (ANSI escape codes)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Components">
+    <ArchBox>App (Root)</ArchBox>
+    <ArchBox>REPL Screen</ArchBox>
+    <ArchBox>Message List</ArchBox>
+    <ArchBox>Prompt Input</ArchBox>
+    <ArchBox>Permission Dialogs</ArchBox>
+    <ArchBox>Spinners / Progress</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+## Component Hierarchy
+
+<ArchDiagram>
+  <ArchLayer label="Root">
+    <ArchBox accent>App — state providers + theme</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Shell">
+    <ArchBox accent>RootTUI → REPL Screen</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="REPL Children">
+    <ArchBox>Messages (scrollable list)</ArchBox>
+    <ArchBox>PromptInput (keyboard input)</ArchBox>
+    <ArchBox>StatusBar (model, tokens, cost)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Message Types">
+    <ArchBox>UserMessage</ArchBox>
+    <ArchBox>AssistantMessage</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Assistant Blocks">
+    <ArchBox>Text (markdown)</ArchBox>
+    <ArchBox>ToolUse (invocation)</ArchBox>
+    <ArchBox>ToolResult (output)</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Overlays">
+    <ArchBox>PermissionRequest (dialog)</ArchBox>
+    <ArchBox>Activity Spinner</ArchBox>
+    <ArchBox>Toast Notifications</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+## Key Components
+
+### App (`src/components/App.tsx`)
+Root component that wraps the entire application with providers:
+- `AppStateProvider` — central state store
+- `NotificationProvider` — toast messages
+- `ModalProvider` — dialog management
+- Theme configuration
+
+### REPL Screen (`src/screens/REPL.tsx`)
+The main interactive screen:
+- Manages the conversation view
+- Handles keyboard input routing
+- Coordinates between message display and input
+
+### Messages
+Virtual scrolling for large conversations:
+- Only renders visible messages
+- Smooth scrolling through history
+- Supports message folding/expansion
+
+### PromptInput
+The text input area at the bottom:
+- Multi-line input with history
+- Tab completion for commands and file paths
+- Keyboard shortcuts (Ctrl+C to cancel, etc.)
+- Prompt suggestions
+
+### PermissionRequest
+The approval dialog shown when a tool needs permission:
+- Shows tool name and input summary
+- Options: Allow, Deny, Always Allow
+- Animated border for visibility
+
+### Tool-Specific Renderers
+Each tool has custom rendering:
+- **FileEdit** — shows a diff view with syntax highlighting
+- **Bash** — shows command and output with truncation
+- **Read** — shows file content with line numbers
+- **Agent** — shows agent status and progress
+
+## Theming
+
+Claude Code supports light and dark themes:
+
+```typescript
+// Theme detection
+const colorMode = {
+  defaultMode: 'dark',
+  respectPrefersColorScheme: true, // Follows terminal theme
+}
+```
+
+### Colors
+- **Dark theme** — dark backgrounds, light text, syntax highlighting via Dracula palette
+- **Light theme** — light backgrounds, dark text, syntax highlighting via GitHub palette
+- Terminal capability detection — graceful degradation for terminals with limited color support
+
+## Rendering Pipeline
+
+<FlowDiagram>
+  <Node icon="💾">AppState Update</Node>
+  <Conn />
+  <Node icon="⚙️">React Reconciler</Node>
+  <Conn />
+  <Node icon="🧩">Ink Renderer</Node>
+  <Conn />
+  <Node icon="📐">Yoga Layout — compute positions</Node>
+  <Conn />
+  <Node icon="🔄">Cell-level Diff</Node>
+  <Conn />
+  <Node icon="📤">ANSI Escape Codes → Terminal Output</Node>
+</FlowDiagram>
+
+### Cell-Level Diffing
+Ink maintains a virtual terminal buffer and only writes the cells that changed — similar to how React DOM does virtual DOM diffing, but for terminal characters.
+
+### Yoga Layout
+Components use flexbox-style layout:
+```jsx
+<Box flexDirection="column" padding={1}>
+  <Box flexDirection="row">
+    <Text bold>Claude</Text>
+    <Text> is thinking...</Text>
+  </Box>
+  <Spinner type="dots" />
+</Box>
+```
+
+## Statistics
+
+| Metric | Count |
+|--------|-------|
+| React components | 150+ |
+| Custom hooks | 100+ |
+| Ink custom elements | 96 files in `src/ink/` |
+| Screens | REPL (main), plus modal overlays |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/components/App.tsx` | Root component |
+| `src/screens/REPL.tsx` | Main REPL screen |
+| `src/components/` | 150+ components (389 files total) |
+| `src/hooks/` | React hooks (104 files) |
+| `src/ink/` | Custom Ink renderer extensions (96 files) |

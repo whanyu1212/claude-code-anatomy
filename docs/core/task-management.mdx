@@ -1,0 +1,239 @@
+---
+sidebar_position: 4
+title: Task Management
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { FlowDiagram, Node, Conn, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+import TaskBoard from '@site/src/components/TaskBoard';
+
+# Task Management
+
+How Claude Code manages background work — task types, lifecycle, persistence, and notifications.
+
+## Live Task Board
+
+Watch how tasks progress through their lifecycle. Background tasks run independently while the main agent continues working:
+
+<TaskBoard />
+
+## Task Types
+
+Claude Code supports 7 task types, covering shell commands, agent work, remote execution, and more:
+
+<ArchDiagram>
+  <ArchLayer label="User-Facing">
+    <ArchBox accent>local_bash</ArchBox>
+    <ArchBox accent>local_agent</ArchBox>
+    <ArchBox>local_workflow</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Infrastructure">
+    <ArchBox>remote_agent</ArchBox>
+    <ArchBox>in_process_teammate</ArchBox>
+    <ArchBox>monitor_mcp</ArchBox>
+    <ArchBox>dream</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+| Type | What It Does | Example |
+|------|-------------|---------|
+| `local_bash` | Run a shell command in the background | `npm test` running while you continue working |
+| `local_agent` | Spawn a sub-agent that works independently | Research task running in parallel |
+| `remote_agent` | Execute on a remote Claude Code Runner | Cloud-based execution |
+| `in_process_teammate` | An in-memory agent (coordinator/swarm) | Multi-agent collaboration |
+| `local_workflow` | Run a predefined workflow | Scripted task sequences |
+| `monitor_mcp` | Watch an MCP server | Event monitoring |
+| `dream` | Background speculative work | Memory tidying |
+
+## Task Lifecycle
+
+<FlowDiagram>
+  <Node icon="📋">TaskCreate</Node>
+  <Conn />
+  <Node variant="subtle">pending</Node>
+  <Conn />
+  <Node variant="primary" icon="⚙️">running</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Node variant="success" icon="✅">completed</Node>
+    <Node variant="danger" icon="❌">failed</Node>
+    <Node variant="warning">killed (TaskStop / timeout)</Node>
+  </Branches>
+</FlowDiagram>
+
+### Task Creation
+
+```typescript title="src/tools/TaskCreateTool/TaskCreateTool.ts"
+TaskCreate({
+  subject: 'Run tests in watch mode',
+  description: 'Execute npm test with --watch flag',
+  activeForm: 'running tests',    // spinner text
+  metadata: { command: 'npm test -- --watch' },
+})
+// Returns: task_id for tracking
+```
+
+### Task Notifications
+
+When a background task completes, a notification is injected into the conversation. The model sees it and can report results or take follow-up actions:
+
+```xml
+<task-notification>
+  <task-id>abc123</task-id>
+  <status>completed</status>
+  <summary>Background command "npm test" completed (exit code 0)</summary>
+</task-notification>
+```
+
+### Persistence
+
+Tasks persist to disk at `~/.claude/tasks/`:
+
+| File | Contents |
+|------|----------|
+| `{task-id}.json` | Metadata: ID, type, status, timestamps, command/prompt |
+| `{task-id}.output` | Output streamed to file as produced (stdout/stderr) |
+
+## Task Management Tools
+
+| Tool | Purpose |
+|------|---------|
+| `TaskCreate` | Create a new background task |
+| `TaskUpdate` | Update task status or details |
+| `TaskList` | List all active tasks |
+| `TaskGet` | Get details of a specific task |
+| `TaskOutput` | Retrieve output (blocking or non-blocking) |
+| `TaskStop` | Stop a running task |
+| `TodoWrite` | Manage the session task checklist |
+
+## Framework Comparison
+
+Background task management is handled very differently across frameworks. Claude Code has the most comprehensive built-in task system:
+
+<Tabs>
+<TabItem value="claude" label="Claude Code" default>
+
+```typescript title="src/tools/TaskCreateTool/TaskCreateTool.ts"
+// 7 task types, disk persistence, notifications
+TaskCreate({
+  subject: 'Run tests',
+  description: 'npm test -- --watch',
+})
+// → task_id returned immediately
+// → output streamed to ~/.claude/tasks/{id}.output
+// → <task-notification> injected on completion
+// → TaskOutput(task_id) to retrieve results
+
+// Also: TodoWrite for session checklists
+TodoWrite({ todos: [
+  { status: 'completed', content: 'Fix auth bug' },
+  { status: 'in_progress', content: 'Write tests' },
+]})
+```
+
+**7 task types** with disk persistence, streaming output, completion notifications, and a separate todo/checklist system. Tasks survive conversation restarts.
+
+</TabItem>
+<TabItem value="adk" label="Google ADK">
+
+```python title="google/adk/tools/long_running_tool.py"
+# Long-running operations via LongRunningFunctionTool
+tool = LongRunningFunctionTool(deploy_to_staging)
+# → is_long_running = True
+# → Returns resource ID immediately
+# → Agent pauses, sends input_required to client
+# → Client provides completion signal later
+
+# A2A task states (Agent-to-Agent protocol)
+class TaskState:
+    submitted   # New task
+    working     # In progress
+    input_required  # Waiting for user
+    auth_required   # Needs authentication
+    completed   # Done
+    failed      # Error
+```
+
+**No built-in task persistence.** Long-running operations pause the agent and wait for external signals. Task state tracked via A2A protocol events, not disk files.
+
+</TabItem>
+<TabItem value="openai" label="OpenAI Agents">
+
+```python title="agents/result.py"
+# Streaming results with background tasks
+result = Runner.run_streamed(agent, input)
+# → result.run_loop_task (background asyncio.Task)
+# → result._input_guardrails_task (parallel)
+# → result._output_guardrails_task (parallel)
+
+# Interruption and resumption
+run_state = result.to_state()  # Snapshot for persistence
+# ... later ...
+resumed = Runner.run(agent, state=run_state)
+
+# Cancellation
+await result.cancel("after_turn")  # Graceful
+await result.cancel("immediate")   # Force
+```
+
+**No persistent task system.** Background work is asyncio tasks within a single run. Interruption/resumption via `RunState` serialization. No disk persistence or cross-session tasks.
+
+</TabItem>
+<TabItem value="langgraph" label="LangChain / LangGraph">
+
+```python title="langgraph/checkpoint/base/__init__.py"
+# Checkpointing — persistent state across invocations
+graph = create_agent(model, tools, checkpointer=MemorySaver())
+
+# Run with thread ID for persistence
+result = graph.invoke(input, {"configurable": {"thread_id": "t1"}})
+
+# Interrupt and resume (human-in-the-loop)
+graph = create_agent(model, tools,
+    interrupt_before=["tools"],
+    checkpointer=PostgresSaver(conn),
+)
+# → Graph pauses before tool execution
+# → Client retrieves state, provides approval
+# → graph.invoke(Command(resume=value), config)
+
+# Durability modes
+# "transactional" — checkpoint after every node
+# "exit" — checkpoint only on completion
+```
+
+**Checkpointing, not tasks.** LangGraph persists entire graph state (messages, channel values, versions) via pluggable backends (memory, Postgres, SQLite). No background shell commands or task types — concurrency is within graph execution.
+
+</TabItem>
+</Tabs>
+
+### Comparison Matrix
+
+| Feature | Claude Code | Google ADK | OpenAI Agents | LangGraph |
+|---------|:-----------:|:----------:|:-------------:|:---------:|
+| **Background shell commands** | `local_bash` | None | None | None |
+| **Background agents** | `local_agent` | `is_long_running` | `asyncio.Task` | Subgraph nodes |
+| **Task types** | 7 | 1 (long-running) | None | None |
+| **Disk persistence** | JSON + output files | None | `RunState` serialization | Checkpointer backends |
+| **Completion notifications** | `<task-notification>` | A2A events | Queue sentinels | Interrupt/resume |
+| **Cross-session survival** | Yes (disk) | No | No | Yes (checkpointer) |
+| **Task listing/management** | 6 tools (CRUD + output) | None | None | Checkpoint history |
+| **Interruption model** | TaskStop + timeout | input_required state | cancel() method | interrupt() + Command |
+| **Session checklist** | `TodoWrite` | None | None | None |
+| **Remote execution** | `remote_agent` (CCR) | None | None | LangGraph Cloud |
+
+:::info Key difference
+Claude Code is the **only framework** with a dedicated background task system that supports multiple task types, disk persistence, streaming output, and completion notifications injected into conversation context. Other frameworks handle concurrency within a single run (asyncio tasks) or persist state at the graph level (checkpointing), but none offer a general-purpose task queue that the model can create, monitor, and retrieve results from.
+:::
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/Task.ts` | Task type definitions |
+| `src/tasks/` | Task implementations (8 types) |
+| `src/tools/TaskCreateTool/` | Task creation |
+| `src/tools/TaskOutputTool/` | Output retrieval |
+| `src/tools/TodoWriteTool/` | Session checklist |

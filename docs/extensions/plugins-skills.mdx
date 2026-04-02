@@ -1,0 +1,163 @@
+---
+sidebar_position: 3
+title: Plugins & Skills
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group } from '@site/src/components/Diagrams';
+
+# Plugins & Skills
+
+Two extension mechanisms: **Plugins** for full CLI extensions, and **Skills** for lightweight AI prompt templates. For how plugin tools and skills feed into the tool pipeline, see [Tool Sources](/tools/tool-sources).
+
+## Skills
+
+Skills are the simpler extension — markdown files that inject prompt content when invoked as slash commands.
+
+### Skill Format
+
+```yaml
+---
+name: my-skill
+description: What this skill does
+context: inline   # or 'fork' to run in a sub-agent
+effort: balanced
+paths: ["src/**"] # Glob patterns for auto-activation
+---
+
+Your skill prompt content here.
+This becomes the instruction sent to the model.
+```
+
+### How Skills Work
+
+<FlowDiagram>
+  <Node icon="📋">User types /skill-name</Node>
+  <Conn />
+  <Node icon="📥">Load skill file</Node>
+  <Conn />
+  <Node variant="purple">Context type?</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <FlowDiagram>
+      <Node variant="primary">inline</Node>
+      <Conn size="short" />
+      <Node>Inject content as user message</Node>
+      <Conn size="short" />
+      <Node icon="🤖">Model processes in current conversation</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">fork</Node>
+      <Conn size="short" />
+      <Node>Spawn sub-agent</Node>
+      <Conn size="short" />
+      <Node icon="🤖">Sub-agent processes independently</Node>
+      <Conn size="short" />
+      <Node icon="📤">Result returned to main conversation</Node>
+    </FlowDiagram>
+  </Branches>
+</FlowDiagram>
+
+### Skill Sources
+
+1. **Bundled skills** — shipped with Claude Code in `src/skills/bundled/`
+2. **User skills** — stored in `~/.claude/skills/`
+3. **Project skills** — in `.claude/skills/` within a repo
+
+### Bundled Skills
+
+Claude Code ships with several built-in skills including:
+- `/commit` — create a git commit
+- `/review-pr` — review a pull request
+- `/simplify` — simplify recently changed code
+- And more...
+
+These are PromptCommands — they inject specialized instructions into the conversation.
+
+## Plugins
+
+Plugins are full CLI extensions that can add commands, tools, and hooks.
+
+### Plugin Manifest
+
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "commands": [
+    { "name": "my-command", "description": "...", "handler": "./commands/my-command.js" }
+  ],
+  "tools": [
+    { "name": "MyTool", "handler": "./tools/my-tool.js" }
+  ],
+  "hooks": [
+    { "event": "pre_tool_use", "handler": "./hooks/validate.js" }
+  ]
+}
+```
+
+### Plugin Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Commands** | Custom slash commands (any type) |
+| **Tools** | Custom tools available to the model |
+| **Hooks** | Lifecycle hooks (pre/post query, pre/post tool use) |
+| **Settings** | Custom configuration options |
+| **Permissions** | Custom permission rules |
+
+### Plugin Lifecycle
+
+<FlowDiagram>
+  <Node icon="🚀">CLI Startup</Node>
+  <Conn />
+  <Node icon="🔍">Discover plugins in ~/.claude/plugins/</Node>
+  <Conn />
+  <Node icon="📥">Load and validate manifests</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Invalid — log warning, skip plugin</Node>
+    <Node variant="success">Valid — register capabilities</Node>
+  </Branches>
+  <Conn />
+  <Node icon="🔌" variant="primary">Register commands, tools, hooks</Node>
+  <Conn />
+  <Node icon="✅" variant="highlight">Plugin active — responding to events</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Group label="Command Invoked">
+      <Node icon="⌨️">User runs /plugin-cmd</Node>
+      <Conn size="short" />
+      <Node variant="success">Handler executes</Node>
+    </Group>
+    <Group label="Tool Called">
+      <Node icon="🔧">Model calls plugin tool</Node>
+      <Conn size="short" />
+      <Node variant="success">Tool handler runs</Node>
+    </Group>
+    <Group label="Hook Fires">
+      <Node icon="🪝">pre/post tool or query</Node>
+      <Conn size="short" />
+      <Node variant="success">Hook logic runs</Node>
+    </Group>
+  </Branches>
+</FlowDiagram>
+
+### Plugin vs Skill
+
+| Aspect | Skill | Plugin |
+|--------|-------|--------|
+| Complexity | Low (just markdown) | High (JavaScript/TypeScript) |
+| What it can do | Inject prompts | Commands, tools, hooks, settings |
+| Format | YAML frontmatter + markdown | JSON manifest + JS handlers |
+| Installation | Drop a file in `~/.claude/skills/` | Install in `~/.claude/plugins/` |
+| Use case | Prompt templates, workflows | Full-featured extensions |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/skills/` | Skill system (20 files) |
+| `src/skills/bundled/` | Built-in skills |
+| `src/plugins/` | Plugin system |
+| `src/services/plugins/` | Plugin discovery and management |
+| `src/tools/SkillTool/` | Skill execution tool |

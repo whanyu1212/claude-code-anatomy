@@ -1,0 +1,220 @@
+---
+sidebar_position: 1
+title: Command System
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Command System
+
+How slash commands work — the command registry, command types, and the execution flow.
+
+## Command Types
+
+Every slash command is one of three types:
+
+<FlowDiagram>
+  <Node icon="📋">User types /command</Node>
+  <Conn />
+  <Node icon="🔧">Command Registry</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">No match — Unknown command error</Node>
+    <Node variant="success">Match found — Check type</Node>
+  </Branches>
+  <Conn />
+  <Node variant="purple">Command type?</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <FlowDiagram>
+      <Node variant="primary">PromptCommand</Node>
+      <Conn size="short" />
+      <Node>Inject into system prompt</Node>
+      <Conn size="short" />
+      <Node icon="🤖">Model processes</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">LocalCommand</Node>
+      <Conn size="short" />
+      <Node>Execute locally</Node>
+      <Conn size="short" />
+      <Node icon="📤">Display output</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">LocalJSXCommand</Node>
+      <Conn size="short" />
+      <Node>Render React component</Node>
+      <Conn size="short" />
+      <Node icon="🧩">Display in REPL</Node>
+    </FlowDiagram>
+  </Branches>
+</FlowDiagram>
+
+### PromptCommand
+Content is injected into the conversation as a message, and the model processes it. Used for skills and AI-powered commands.
+
+```typescript title="src/types/command.ts"
+type PromptCommand = {
+  type: 'prompt'
+  getPromptForCommand(args: string, context: CommandContext): ContentBlockParam[]
+}
+```
+
+**Examples**: Skills (`/commit`, `/review-pr`), any command that needs the model to act.
+
+### LocalCommand
+Executes immediately without involving the model. Used for configuration and navigation.
+
+```typescript title="src/types/command.ts"
+type LocalCommand = {
+  type: 'local'
+  load(): Promise<{ call(args: string, context: CommandContext): void }>
+}
+```
+
+**Examples**: `/help`, `/clear`, `/model`, `/config`.
+
+### LocalJSXCommand
+Renders a React component inline in the REPL. Used for interactive UI elements.
+
+```typescript title="src/types/command.ts"
+type LocalJSXCommand = {
+  type: 'local-jsx'
+  load(): Promise<{ call(onDone: Function, context: CommandContext, args: string): ReactNode }>
+}
+```
+
+**Examples**: `/mcp` (shows MCP server status UI), `/memory` (shows memory browser).
+
+## Command Registry
+
+Commands are registered from multiple sources during initialization:
+
+<ArchDiagram>
+  <ArchLayer label="Sources">
+    <ArchBox accent>Built-in Commands (src/commands/)</ArchBox>
+    <ArchBox>Skills (~/.claude/skills/)</ArchBox>
+    <ArchBox>Plugin Commands</ArchBox>
+    <ArchBox>MCP Tool Commands</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Registry">
+    <ArchBox accent>Command Registry — Name/Alias Lookup</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+### Registration
+
+The command registry uses **eager imports** — built-in commands are imported at the top of `src/commands.ts`, not lazily loaded. This means all command modules are evaluated at startup:
+
+```typescript title="src/commands.ts (lines 2-46)"
+import { clearCommand } from './commands/clear.js'
+import { helpCommand } from './commands/help.js'
+import { modelCommand } from './commands/model.js'
+import { commitCommand } from './commands/commit.js'
+// ... 60+ imports
+
+// Some commands are environment-gated
+// (e.g., agents-platform only loads when USER_TYPE === 'ant')
+```
+
+Skills and plugin commands are added dynamically after initialization:
+
+```typescript title="src/commands.ts (skill registration)"
+// Skills become PromptCommands
+for (const skill of loadedSkills) {
+  registry.set(skill.name, {
+    type: 'prompt',
+    name: skill.name,
+    description: skill.description,
+    getPromptForCommand: (args) => skill.getContent(args),
+  })
+}
+```
+
+## Command Base Interface
+
+All commands share a base:
+
+```typescript title="src/types/command.ts"
+type CommandBase = {
+  name: string
+  description: string
+  aliases?: string[]
+  isEnabled?(): boolean    // Dynamic enable/disable
+  isHidden?: boolean       // Hide from /help
+  availability?: ('claude-ai' | 'console')[]  // Platform-specific
+}
+```
+
+## Built-in Commands (100+)
+
+Commands are organized by function:
+
+| Category | Commands | Type |
+|----------|----------|------|
+| **Session** | `/clear`, `/resume`, `/continue` | Local |
+| **Config** | `/model`, `/config`, `/permissions` | Local |
+| **Memory** | `/memory`, `/forget` | Local/JSX |
+| **Development** | `/commit`, `/review-pr` | Prompt (Skills) |
+| **MCP** | `/mcp`, `/mcp-servers` | Local/JSX |
+| **Debug** | `/debug`, `/verbose`, `/cost` | Local |
+| **Navigation** | `/help`, `/commands` | Local |
+| **Task** | `/tasks`, `/background` | Local/JSX |
+
+## Execution Flow
+
+<FlowDiagram>
+  <Node icon="⌨️">User types /foo some args</Node>
+  <Conn />
+  <Node icon="🔍">Parse: name = "foo", args = "some args"</Node>
+  <Conn />
+  <Node icon="📋">Registry lookup by name, then by alias</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Not found — "Unknown command" error</Node>
+    <Node variant="success">Found — check isEnabled()</Node>
+  </Branches>
+  <Conn />
+  <Node icon="❓" variant="purple">What type?</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <FlowDiagram>
+      <Node variant="primary">PromptCommand</Node>
+      <Conn size="short" />
+      <Node>getPromptForCommand(args)</Node>
+      <Conn size="short" />
+      <Node>Content blocks returned</Node>
+      <Conn size="short" />
+      <Node>Injected as user message</Node>
+      <Conn size="short" />
+      <Node icon="🤖" variant="success">Model processes + responds</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">LocalCommand</Node>
+      <Conn size="short" />
+      <Node>load() — import module</Node>
+      <Conn size="short" />
+      <Node>call(args, context)</Node>
+      <Conn size="short" />
+      <Node icon="📤" variant="success">Output displayed in REPL</Node>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">LocalJSXCommand</Node>
+      <Conn size="short" />
+      <Node>load() — import module</Node>
+      <Conn size="short" />
+      <Node>call(onDone, context, args)</Node>
+      <Conn size="short" />
+      <Node icon="🧩" variant="success">React component rendered inline</Node>
+    </FlowDiagram>
+  </Branches>
+</FlowDiagram>
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/commands.ts` | Command registry and loaders |
+| `src/types/command.ts` | Command type definitions |
+| `src/commands/` | 60+ command implementations (207 files) |

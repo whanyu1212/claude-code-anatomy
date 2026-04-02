@@ -1,0 +1,135 @@
+---
+sidebar_position: 3
+title: Tool Execution
+---
+
+import { FlowDiagram, Node, Conn, Branches } from '@site/src/components/Diagrams';
+import ConcurrencyLanes from '@site/src/components/ConcurrencyLanes';
+
+# Tool Execution
+
+How tools are orchestrated, executed in parallel, and how results flow back to the model.
+
+## StreamingToolExecutor
+
+The `StreamingToolExecutor` manages tool execution during a streaming API response. As `tool_use` blocks arrive from the stream, it queues, groups, executes, and collects results — all while the response is still streaming.
+
+## Parallel vs Sequential Execution
+
+The executor determines parallelism based on each tool's `isConcurrencySafe()` method. Watch how safe tools run simultaneously while unsafe tools wait in line:
+
+<ConcurrencyLanes />
+
+**Safe for parallel** — `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `ListMcpResources` (no side effects)
+
+**Must run sequentially** — `FileEdit`, `FileWrite`, `Bash`, `Agent`, `TaskCreate` (order matters, side effects)
+
+When the model emits both safe and unsafe tools in one response, all safe tools run in parallel first, then unsafe tools run sequentially. Results are always collected in the original emission order.
+
+## Execution Pipeline
+
+For each individual tool call, the execution pipeline is:
+
+<FlowDiagram>
+  <Node icon="📥">Receive tool_use block</Node>
+  <Conn />
+  <Node icon="✅">Parse & validate input (Zod schema)</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Invalid — Return validation error</Node>
+    <Node variant="success">Valid — Check permissions</Node>
+  </Branches>
+  <Conn />
+  <Node icon="🔒" variant="purple">Permission mode?</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Node variant="success">Allow — Proceed</Node>
+    <Node variant="warning">Ask — Show dialog</Node>
+    <Node variant="danger">Deny — Return denial</Node>
+  </Branches>
+  <Conn />
+  <Node icon="🔧">Run pre-tool hooks</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Hook vetoed — Deny</Node>
+    <Node variant="success">Proceed — tool.call</Node>
+  </Branches>
+  <Conn />
+  <Node icon="⚙️" variant="primary">Execute & stream progress</Node>
+  <Conn />
+  <Node icon="🔧">Run post-tool hooks</Node>
+  <Conn />
+  <Node icon="📤">Format & return tool_result block</Node>
+</FlowDiagram>
+
+## Progress Streaming
+
+Tools report progress via the `onProgress` callback:
+
+```typescript
+async call(args, context, canUseTool, parentMsg, onProgress) {
+  // Report start
+  onProgress({
+    toolUseID: context.toolUseID,
+    data: { type: 'status', message: 'Reading file...' }
+  })
+
+  const content = await readFile(args.path)
+
+  // Report completion with data
+  onProgress({
+    toolUseID: context.toolUseID,
+    data: { type: 'output', content }
+  })
+
+  return { data: content }
+}
+```
+
+The REPL UI subscribes to progress events and renders:
+- **Spinners** during execution
+- **Partial output** as it becomes available
+- **Diffs** for file edit tools
+- **Truncated output** for long bash results
+
+## Result Mapping
+
+Tool results are mapped to the API's `tool_result` block format:
+
+```typescript
+{
+  type: 'tool_result',
+  tool_use_id: '<matching tool_use id>',
+  content: [
+    { type: 'text', text: '<result content>' }
+  ]
+}
+```
+
+Large results may be:
+- **Truncated** to fit context budget
+- **Persisted to disk** with a reference in the message
+- **Summarized** during compaction
+
+## Error Handling
+
+| Error Type | Handling |
+|------------|----------|
+| Validation error | Return error message as tool_result, model can retry |
+| Permission denied | Return denial message, model adapts approach |
+| Execution timeout | Kill process, return timeout error |
+| Runtime exception | Catch, return error message with stack trace |
+| Hook veto | Return hook's denial message |
+
+The model sees all errors as tool_result content and can:
+- Retry with corrected input
+- Try an alternative approach
+- Ask the user for help
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/tools/StreamingToolExecutor.ts` | Parallel execution engine |
+| `src/services/tools/toolOrchestration.ts` | Tool call orchestration |
+| `src/query.ts` | Integration with query loop |

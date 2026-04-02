@@ -1,0 +1,130 @@
+---
+slug: /
+sidebar_position: 1
+title: Overview
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Claude Code Anatomy
+
+How Claude Code actually works, from the decompiled source.
+
+## Why This Exists
+
+Claude Code ships as an opaque binary. You can't read how it picks tools, gates permissions, or coordinates agents. So we decompiled it from npm source maps and documented the internals across **4,756 TypeScript files**. Key sections include framework comparisons (ADK, OpenAI Agents SDK, LangChain, LangGraph) so the patterns are portable to your own agent architecture.
+
+## How to Read This Site
+
+**Sequential** — Read Core Architecture in order: Agent Loop → Tool System → Task Management → Prompt, Memory & Context → State & Sessions. This traces how a message flows through the entire system.
+
+**By topic** — Jump to any section. Extensions and Security are self-contained. Runtime & Infrastructure covers startup, rendering, and API internals.
+
+**As a reference** — The Appendix has the full directory map, all 90+ feature flags, complete tool definitions, and a glossary.
+
+## Architecture at a Glance
+
+<FlowDiagram>
+  <Node icon="👤">User Input</Node>
+  <Conn />
+  <Node icon="📥" variant="primary">cli.tsx - Bootstrap</Node>
+  <Conn />
+  <Node icon="⚙️" variant="primary">main.tsx - Initialization</Node>
+  <Conn />
+  <Node icon="🖥️" variant="highlight">REPL Screen - React/Ink</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node icon="⌨️">Prompt Input</Node>
+    <Node icon="💬">Message Display</Node>
+  </Branches>
+  <Conn />
+  <Node icon="❓" variant="purple">Slash Command?</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node icon="📋" variant="warning">Yes: Command System</Node>
+    <Node icon="⚙️" variant="primary">No: Query Engine</Node>
+  </Branches>
+  <Conn />
+  <Group label="Query Engine Pipeline">
+    <Node icon="📝">System Prompt Assembly</Node>
+    <Conn size="short" />
+    <Node icon="📡" variant="primary">API Call - Anthropic/Bedrock/Vertex</Node>
+    <Conn size="short" />
+    <Node icon="📡">Streaming Response</Node>
+  </Group>
+  <Conn />
+  <Node icon="❓" variant="purple">Tool Use?</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Group label="Yes: Tool Pipeline">
+      <Node icon="🔒" variant="warning">Permission Check</Node>
+      <Conn size="short" />
+      <Node icon="🔧">Tool Execution</Node>
+      <Conn size="short" />
+      <Node icon="📤" variant="success">Tool Result → back to API</Node>
+    </Group>
+    <Node icon="✅" variant="success">No: Render Response</Node>
+  </Branches>
+</FlowDiagram>
+
+<ArchDiagram>
+  <ArchLayer label="Extensions">
+    <ArchBox>MCP Servers</ArchBox>
+    <ArchBox>Plugins</ArchBox>
+    <ArchBox>Skills</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="State">
+    <ArchBox accent>Zustand Store</ArchBox>
+    <ArchBox>React Contexts</ArchBox>
+    <ArchBox>CLAUDE.md Layers</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+## Source Recovery
+
+This analysis is based on source code recovered from the `@anthropic-ai/claude-code` v2.1.88 npm package. The published bundle includes a source map (`cli.js.map`) containing all 4,756 original TypeScript source files with full `sourcesContent`, enabling lossless restoration:
+
+```bash
+# Extract sources from the source map
+node -e "
+const fs = require('fs'), path = require('path');
+const map = JSON.parse(fs.readFileSync('package/cli.js.map', 'utf8'));
+for (let i = 0; i < map.sources.length; i++) {
+  const content = map.sourcesContent[i];
+  if (!content) continue;
+  let relPath = map.sources[i];
+  while (relPath.startsWith('../')) relPath = relPath.slice(3);
+  const outPath = path.join('./claude-code-source', relPath);
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, content);
+}
+"
+```
+
+## By the Numbers
+
+| Metric | Value |
+|--------|-------|
+| Source files | **4,756** |
+| Core source (src/ + vendor/) | **1,906** files |
+| Built-in tools | **45+** |
+| Slash commands | **100+** |
+| Feature flags | **90+** |
+| npm dependencies | **489** packages |
+| Build output | **~22 MB** |
+| Version analyzed | **2.1.88** |
+
+## Technology Stack
+
+| | Technology | Role |
+|---|------------|------|
+| ![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white) | TypeScript 6.0 | Language |
+| ![React](https://img.shields.io/badge/React_19-+_Ink_6-61DAFB?logo=react&logoColor=black) | React 19 + Ink 6 | Terminal UI framework |
+| ![Bun](https://img.shields.io/badge/Bun-Bundler-fbf0df?logo=bun&logoColor=black) | Bun | Build tool |
+| ![Zustand](https://img.shields.io/badge/Zustand--like-Store-443E38) | Custom store | State management |
+| ![Zod](https://img.shields.io/badge/Zod-Schema-3E67B1?logo=zod&logoColor=white) | Zod | Schema validation |
+| ![Commander](https://img.shields.io/badge/Commander-CLI-red) | Commander | Argument parsing |
+| ![Anthropic](https://img.shields.io/badge/Anthropic-SDK-d4a574?logo=anthropic&logoColor=white) | Anthropic SDK | API client |
+| ![MCP](https://img.shields.io/badge/MCP-Protocol-2dd4bf) | MCP SDK | Model Context Protocol |
+| ![OTEL](https://img.shields.io/badge/OpenTelemetry-Traces-425CC7?logo=opentelemetry&logoColor=white) | OpenTelemetry | Observability |

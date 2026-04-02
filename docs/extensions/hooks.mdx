@@ -1,0 +1,264 @@
+---
+sidebar_position: 4
+title: Hooks
+---
+
+import { FlowDiagram, Node, Conn, Branches, Group, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Hooks
+
+Hooks are user-configured shell commands that intercept lifecycle events — tool calls, agent loop turns, notifications, and session end. They're the primary mechanism for adding custom guardrails, logging, and automation.
+
+## Hook Events
+
+<ArchDiagram>
+  <ArchLayer label="Tool Pipeline">
+    <ArchBox accent>pre_tool_use</ArchBox>
+    <ArchBox accent>post_tool_use</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Agent Loop">
+    <ArchBox>pre_query</ArchBox>
+    <ArchBox>post_query</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Session">
+    <ArchBox>on_notification</ArchBox>
+    <ArchBox>stop</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+| Event | When It Fires | Can Veto? |
+|-------|--------------|-----------|
+| `pre_tool_use` | Before each tool execution (after permission check) | Yes — can block the tool call |
+| `post_tool_use` | After each tool execution completes | No — side effects only |
+| `pre_query` | Before each API call to the model | Yes — can block the turn |
+| `post_query` | After the model responds | No — side effects only |
+| `on_notification` | When a background task completes | No |
+| `stop` | When the session ends | No |
+
+## Configuration
+
+Hooks are configured in `settings.json` at multiple scopes:
+
+```json title="~/.claude/settings.json (user scope)"
+{
+  "hooks": {
+    "pre_tool_use": [
+      {
+        "command": "python3 ~/.claude/hooks/audit-tool.py",
+        "timeout": 5000
+      }
+    ],
+    "post_tool_use": [
+      {
+        "command": "bash ~/.claude/hooks/log-tool.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash ~/.claude/hooks/on-stop.sh"
+      }
+    ]
+  }
+}
+```
+
+### Configuration Scopes
+
+| Scope | File | Priority |
+|-------|------|----------|
+| User | `~/.claude/settings.json` | Base |
+| Project | `.claude.json` in project root | Overrides user |
+| Local | `.claude/local.json` | Overrides project |
+| Enterprise | Managed policy | Highest priority |
+
+Hooks from all scopes are **merged** — a project can add hooks without removing user-level hooks.
+
+## Execution Model
+
+Hooks run as **shell subprocesses**. They receive JSON on **stdin** and write JSON to **stdout**:
+
+<FlowDiagram>
+  <Node icon="⚡">Event fires (e.g. pre_tool_use)</Node>
+  <Conn />
+  <Node icon="🐚" variant="primary">Spawn hook as shell command</Node>
+  <Conn />
+  <Node icon="📥">Pipe event data as JSON to stdin</Node>
+  <Conn />
+  <Node icon="⏳">Wait for hook to complete (with timeout)</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Group label="Exit 0 + allow">
+      <Node variant="success">Proceed normally</Node>
+    </Group>
+    <Group label="Exit 0 + deny">
+      <Node variant="danger">Block execution</Node>
+    </Group>
+    <Group label="Non-zero exit">
+      <Node variant="danger">Treated as veto</Node>
+    </Group>
+  </Branches>
+</FlowDiagram>
+
+## Hook Input & Output
+
+### pre_tool_use
+
+The hook receives the tool name and input arguments:
+
+```json title="stdin"
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf /tmp/build",
+    "description": "Clean build directory"
+  }
+}
+```
+
+The hook responds with a decision:
+
+```json title="stdout — allow"
+{ "decision": "allow" }
+```
+
+```json title="stdout — deny with message"
+{ "decision": "deny", "message": "Blocked: rm -rf not allowed" }
+```
+
+```json title="stdout — allow with modified input"
+{
+  "decision": "allow",
+  "updated_input": {
+    "command": "rm -rf /tmp/build --dry-run",
+    "description": "Clean build directory (dry run)"
+  }
+}
+```
+
+If the hook process exits with a **non-zero exit code**, the tool call is denied regardless of stdout.
+
+### post_tool_use
+
+```json title="stdin"
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test",
+    "description": "Run tests"
+  },
+  "tool_result": {
+    "exit_code": 0,
+    "output": "All 42 tests passed"
+  }
+}
+```
+
+Post-hooks cannot modify or veto — they're for logging, notifications, and analytics. Stdout is ignored.
+
+### pre_query / post_query
+
+```json title="stdin (pre_query)"
+{
+  "messages": [...],
+  "system_prompt_length": 12450,
+  "turn_number": 3
+}
+```
+
+Pre-query hooks can return `{ "decision": "deny" }` to block the API call. Post-query hooks receive the model's response for logging.
+
+## Practical Examples
+
+### Audit Logger
+
+```bash title="~/.claude/hooks/audit-tool.sh"
+#!/bin/bash
+# Log every tool call to a file
+INPUT=$(cat)
+TOOL=$(echo "$INPUT" | jq -r '.tool_name')
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+echo "$TIMESTAMP $TOOL" >> ~/.claude/audit.log
+echo '{"decision": "allow"}'
+```
+
+### Block Dangerous Commands
+
+```python title="~/.claude/hooks/block-dangerous.py"
+#!/usr/bin/env python3
+import sys, json
+
+data = json.load(sys.stdin)
+if data["tool_name"] == "Bash":
+    cmd = data["tool_input"].get("command", "")
+    blocked = ["rm -rf /", "sudo", "chmod 777", "> /dev/sda"]
+    for pattern in blocked:
+        if pattern in cmd:
+            json.dump({
+                "decision": "deny",
+                "message": f"Blocked: '{pattern}' is not allowed"
+            }, sys.stdout)
+            sys.exit(0)
+
+json.dump({"decision": "allow"}, sys.stdout)
+```
+
+### Slack Notification on Completion
+
+```bash title="~/.claude/hooks/notify-stop.sh"
+#!/bin/bash
+# Send Slack notification when session ends
+INPUT=$(cat)
+curl -s -X POST "$SLACK_WEBHOOK" \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Claude Code session ended"}'
+```
+
+## Where Hooks Fire in the Pipeline
+
+### Tool Execution Pipeline
+
+Hooks sit between permission checks and actual execution. See [Tool Execution](/tools/tool-execution) for the full pipeline.
+
+```
+Validate input → Check permissions → ⭐ pre_tool_use hooks
+                                        ↓
+                                    Execute tool
+                                        ↓
+                                    ⭐ post_tool_use hooks → Return result
+```
+
+### Agent Loop
+
+Query hooks wrap each turn of the [agent loop](/core/agent-loop):
+
+```
+User input → System prompt assembly → ⭐ pre_query hook
+                                          ↓
+                                      API call (streaming)
+                                          ↓
+                                      ⭐ post_query hook → Process response
+```
+
+If a pre_query hook vetoes, the agent loop terminates with `hook_stopped`.
+
+## Hooks vs Plugin Hooks
+
+| Aspect | Settings Hooks | Plugin Hooks |
+|--------|---------------|--------------|
+| **Config** | `settings.json` | Plugin manifest |
+| **Language** | Any (shell command) | JavaScript/TypeScript |
+| **Scope** | User/project/enterprise | Per-plugin |
+| **Execution** | Subprocess (stdin/stdout) | In-process function call |
+| **Use case** | Personal guardrails, logging | Reusable extension logic |
+
+Plugins can register hooks via their manifest (see [Plugins & Skills](/extensions/plugins-skills)). These run in-process and have access to the full plugin API, while settings hooks are isolated subprocesses.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/utils/hooks/` | Hook execution engine (5+ files) |
+| `src/hooks/` | React hooks (different concept — UI state hooks) |
+| `src/services/plugins/` | Plugin hook registration |

@@ -1,0 +1,277 @@
+---
+sidebar_position: 6
+title: State & Sessions
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group } from '@site/src/components/Diagrams';
+import StateStoreViz from '@site/src/components/StateStore';
+
+# State & Sessions
+
+How Claude Code tracks everything happening at runtime — the conversation, permissions, tasks, and UI — and how it persists across sessions.
+
+## The Core Idea
+
+Imagine a shared whiteboard that every part of the app can read from and write to. That's the **AppState store** — a single object holding all runtime state. When something changes (a new message arrives, a tool finishes, the user toggles a setting), the whiteboard is updated, and only the parts of the UI that care about that change re-render.
+
+This is the same pattern used by state management libraries like [Zustand](https://github.com/pmndrs/zustand) (React) or [Pinia](https://pinia.vuejs.org/) (Vue), but Claude Code implements it from scratch.
+
+## AppState Store
+
+Click any group to expand its fields:
+
+<StateStoreViz />
+
+### How It Works
+
+The store has three operations: **read**, **update**, and **subscribe**. Here's the pattern in TypeScript and the Python equivalent:
+
+```typescript
+// TypeScript (actual Claude Code pattern)
+
+// 1. Read — get current state snapshot
+const state = store.getState()
+console.log(state.messages.length)  // 12
+
+// 2. Update — always create a NEW object (never mutate)
+store.setState(prev => ({
+  ...prev,
+  messages: [...prev.messages, newMessage]  // new array, not push()
+}))
+
+// 3. Subscribe — React hook that re-renders only when selected value changes
+function MessageList() {
+  const messages = useAppState(s => s.messages)
+  //    ^^^^^^^^ only re-renders when messages array changes
+  return <>{messages.map(m => <Message key={m.id} msg={m} />)}</>
+}
+```
+
+```python
+# Python equivalent — same concept, different syntax
+
+# 1. Read
+state = store.get_state()
+print(len(state["messages"]))  # 12
+
+# 2. Update — return new dict, never mutate in place
+store.set_state(lambda prev: {
+    **prev,
+    "messages": [*prev["messages"], new_message]  # new list
+})
+
+# 3. Subscribe — callback fires only when selected value changes
+def on_messages_change(messages):
+    render_message_list(messages)
+
+store.subscribe(
+    selector=lambda s: s["messages"],
+    callback=on_messages_change
+)
+```
+
+### Why Immutable Updates?
+
+The store uses `Object.is` (reference equality) to detect changes. This is why you always create a **new object** instead of mutating:
+
+```typescript
+// ❌ BAD — mutation, store can't detect the change
+state.messages.push(newMessage)
+
+// ✅ GOOD — new array, store sees a different reference
+setState(prev => ({
+  ...prev,
+  messages: [...prev.messages, newMessage]
+}))
+```
+
+```python
+# Same principle in Python:
+
+# ❌ BAD
+state["messages"].append(new_message)
+
+# ✅ GOOD
+new_state = {**state, "messages": [*state["messages"], new_message]}
+```
+
+This means if you update `messages`, only components subscribed to `messages` re-render. Components watching `tasks` or `verbosity` don't re-render at all. With 50+ fields in the store, this selectivity is critical for performance.
+
+## React Contexts
+
+Beyond the main store, specialized React contexts handle concerns that don't belong in AppState:
+
+| Context | What It Manages | Why Separate |
+|---------|----------------|-------------|
+| `NotificationContext` | Toast messages and alerts | Ephemeral UI, not core state |
+| `MailboxContext` | Cross-agent messaging (swarm mode) | Only exists in multi-agent mode |
+| `ModalContext` | Dialog stack (which modals are open) | UI-only, no persistence needed |
+| `OverlayContext` | Overlay layers | UI-only |
+| `PromptOverlayContext` | Interactive prompt dialogs | UI-only |
+| `VoiceContext` | Voice recording state | Feature-gated, rarely active |
+
+These are nested as providers wrapping the entire app:
+
+<FlowDiagram>
+  <Node icon="🧩" variant="primary">App</Node>
+  <Conn size="short" />
+  <Node icon="💾" variant="highlight">AppStateProvider (the main store)</Node>
+  <Conn size="short" />
+  <Node icon="🔔">NotificationProvider</Node>
+  <Conn size="short" />
+  <Node icon="📦">ModalProvider</Node>
+  <Conn size="short" />
+  <Node icon="🪟">OverlayProvider</Node>
+  <Conn size="short" />
+  <Node icon="🖥️" variant="success">REPL Screen (your terminal UI)</Node>
+</FlowDiagram>
+
+Each provider makes its state available to any component below it in the tree. A component deep inside the REPL can access notifications, modals, or the main store without prop drilling.
+
+## Session Persistence
+
+When you close Claude Code and come back later with `--resume`, you pick up exactly where you left off. Here's how:
+
+### What Gets Saved to Disk
+
+| Data | Location | Format |
+|------|----------|--------|
+| Conversation messages | `~/.claude/sessions/<id>.json` | JSON array |
+| Session metadata | Same file | model, start time, project path |
+| Task states | `~/.claude/tasks/<id>.json` | JSON per task |
+| Task outputs | `~/.claude/tasks/<id>.output` | Raw text |
+
+### Resume Flow
+
+```
+You run: claude --resume
+
+  1. Load session JSON from ~/.claude/sessions/<id>
+  2. Deserialize messages array
+  3. Restore into AppState store
+  4. React re-renders the conversation
+  5. You see your full history and continue
+```
+
+Session data is plain JSON — no database, no binary format. You can even inspect or edit session files manually if needed.
+
+## Framework Comparison
+
+Every agentic framework needs to manage conversation state and persist sessions — but the approaches differ significantly.
+
+<Tabs>
+<TabItem value="claude" label="Claude Code" default>
+
+```typescript title="src/state/AppStateStore.ts (simplified)"
+// Zustand-like immutable store with 50+ fields
+const store = createStore({
+  messages: [],           // Conversation history
+  conversationId: '',     // Session identifier
+  tasks: [],              // Background task states
+  permissionMode: 'default',
+  isStreaming: false,
+  // ... 50+ more fields
+})
+
+// Subscribe with selectors — surgical re-renders
+const messages = useAppState(s => s.messages)
+```
+
+```
+~/.claude/sessions/<id>.json     # Messages + metadata
+~/.claude/tasks/<id>.json        # Task states
+~/.claude/tasks/<id>.output      # Task output
+```
+
+**Custom Zustand-like store** with immutable updates, selector-based subscriptions, and file-based JSON persistence. Resume via `claude --resume`.
+
+</TabItem>
+<TabItem value="adk" label="Google ADK">
+
+```python title="google/adk/sessions/session.py"
+class Session(BaseModel):
+    id: str
+    app_name: str
+    user_id: str
+    state: dict[str, Any]       # Arbitrary key-value state
+    events: list[Event]         # Full event history
+
+# Delta-aware state wrapper — buffers writes
+class State:
+    _value: dict[str, Any]      # Committed values
+    _delta: dict[str, Any]      # Pending changes
+```
+
+**Event-sourced architecture** with pluggable backends: `InMemorySessionService`, `SQLiteSessionService`, `VertexAISessionService`. State changes are buffered in deltas and flushed at checkpoints. Full event replay for deterministic resume.
+
+</TabItem>
+<TabItem value="openai" label="OpenAI Agents">
+
+```python title="agents/run_state.py"
+@dataclass
+class RunState:
+    _current_turn: int
+    _current_agent: Agent | None
+    _original_input: str | list
+    _model_responses: list[ModelResponse]
+    _generated_items: list[RunItem]
+    _session_items: list[RunItem]
+    _conversation_id: str | None
+    _current_step: NextStepInterruption | None
+```
+
+**Typed dataclass** serializable to/from JSON. Multiple session backends: `SQLiteSession`, `RedisSession`, `DaprSession`, `OpenAIConversationsSession` (server-managed threads). Interruption points frozen in `RunState` for deterministic resume.
+
+</TabItem>
+<TabItem value="langgraph" label="LangChain / LangGraph">
+
+```python title="langgraph/checkpoint/base/__init__.py"
+class Checkpoint(TypedDict):
+    v: int                          # Version
+    id: str                         # Monotonic checkpoint ID
+    ts: str                         # ISO timestamp
+    channel_values: dict[str, Any]  # Full state snapshot
+    channel_versions: dict          # Per-channel versions
+    versions_seen: dict             # What each node has seen
+
+# User defines the state shape:
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]  # Reducer
+    sender: str
+```
+
+**Channel-based state** with version tracking and user-defined schemas. Pluggable checkpointers: `InMemorySaver`, `PostgresSaver`, `SqliteSaver`. Thread ID keys conversations. Supports time-travel debugging by replaying from any checkpoint.
+
+</TabItem>
+</Tabs>
+
+### Comparison Matrix
+
+| Feature | Claude Code | Google ADK | OpenAI Agents | LangGraph |
+|---------|:-----------:|:----------:|:-------------:|:---------:|
+| **State model** | Zustand-like store | Dict + Event list | RunState dataclass | Channel snapshots |
+| **State shape** | Fixed (50+ fields) | Free-form dict | Typed dataclass | User-defined schema |
+| **Update model** | Immutable (spread) | Delta buffering | Dataclass replace | Reducer functions |
+| **Subscriptions** | Selector hooks | None (pull-based) | None (pull-based) | None (graph-driven) |
+| **Session key** | session file path | session_id | session_id | thread_id |
+| **Persistence format** | JSON files | Pluggable (SQLite/Cloud) | Pluggable (SQLite/Redis) | Pluggable (Postgres/SQLite) |
+| **Resume** | `--resume` flag | Event replay | RunState serialization | Thread ID reload |
+| **Time-travel** | No | Event history | No | Checkpoint history |
+| **Interrupt/pause** | Ctrl+C + session save | End invocation flag | RunState freeze | interrupt() + Command |
+| **UI reactivity** | Selector re-renders | N/A (no UI) | N/A (no UI) | N/A (no UI) |
+
+:::info Key difference
+Claude Code is a **terminal UI application**, so it needs reactive state management (selector-based subscriptions, surgical re-renders) that the other frameworks don't. The others are libraries — they return state to the caller, not render it. Claude Code's custom store is closest to Zustand in the React ecosystem, while the Python frameworks use simpler pull-based state access.
+:::
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/state/AppState.tsx` | React Context Provider |
+| `src/state/AppStateStore.ts` | Store definition and types |
+| `src/state/store.ts` | Store creation |
+| `src/context/` | Specialized contexts (9 files) |
+| `src/hooks/` | State subscription hooks |

@@ -1,0 +1,181 @@
+---
+sidebar_position: 2
+title: Sandbox & Safety
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Sandbox & Safety
+
+How Claude Code handles destructive operations, sandboxing, and enterprise controls.
+
+## Tool Safety Classification
+
+Every tool self-reports its safety characteristics:
+
+```typescript
+interface Tool {
+  isReadOnly(input): boolean      // No side effects
+  isDestructive(input): boolean   // Potentially harmful
+  isConcurrencySafe(input): boolean  // Safe to run in parallel
+}
+```
+
+| Classification | Meaning | Examples |
+|---------------|---------|---------|
+| Read-only | No side effects | `Read`, `Glob`, `Grep`, `WebSearch` |
+| Non-destructive write | Creates/modifies but recoverable | `FileEdit`, `FileWrite` |
+| Destructive | Hard to reverse | `Bash(rm ...)`, `Bash(git reset --hard)` |
+
+## OS-Level Sandboxing
+
+Claude Code supports operating system sandboxing for the Bash tool:
+
+### macOS — Seatbelt
+Uses macOS sandbox profiles (`sandbox-exec`) to restrict file system access, network access, and process spawning for shell commands.
+
+### Linux — Landlock / Bubblewrap
+Uses Linux security modules to create restricted execution environments for shell commands.
+
+### Sandbox Scope
+- File system access limited to project directory and temp files
+- Network access controlled by policy
+- Process spawning limited
+- System modification blocked
+
+## Enterprise Controls
+
+Organizations can enforce policies that restrict Claude Code behavior:
+
+### Policy Limits
+
+| Policy | What It Controls |
+|--------|-----------------|
+| Token limits | Max tokens per session/request |
+| Tool restrictions | Which tools are available |
+| Model restrictions | Which models can be used |
+| MCP restrictions | Which MCP servers are allowed |
+| File restrictions | Which paths can be read/written |
+| Command restrictions | Which shell commands are permitted |
+
+### Policy Sources
+
+Enterprise policies are loaded from managed configuration and cannot be overridden by users:
+
+<FlowDiagram>
+  <Node icon="🏢">Org Admin</Node>
+  <Conn />
+  <Node icon="📋">Managed Policy Config</Node>
+  <Conn />
+  <Node icon="⚙️" variant="primary">Claude Code</Node>
+  <Conn />
+  <Node icon="🔒" variant="warning">Enforce at every tool call</Node>
+</FlowDiagram>
+
+> Policy always wins over user settings.
+
+### MDM Integration (macOS)
+
+On macOS, policies can be distributed via Mobile Device Management (MDM), allowing organizations to configure Claude Code fleet-wide.
+
+## Destructive Operation Guards
+
+Beyond permissions, Claude Code has built-in guards for dangerous operations:
+
+### File Operations
+- `FileEdit` requires reading the file first (ensures awareness of current content)
+- `FileWrite` warns when overwriting an existing file that hasn't been read
+- No tool can write to paths outside the project without explicit permission
+
+### Git Operations
+- Force push to main/master triggers a warning
+- `git reset --hard` flagged as destructive
+- Amending published commits flagged
+- Hook bypass (`--no-verify`) flagged
+
+### Shell Commands
+- Commands matching destructive patterns are flagged
+- Background commands have restricted tool access
+- Timeout enforcement prevents runaway processes
+
+## Anti-Distillation
+
+Claude Code includes mechanisms to prevent its outputs from being used to train competing models — intellectual property protection at the API and output level.
+
+<ArchDiagram>
+  <ArchLayer label="Two Protection Layers">
+    <ArchBox accent>Fake Tool Injection (API-side)</ArchBox>
+    <ArchBox accent>Streamlined Output (client-side)</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+### Fake Tool Injection
+
+When enabled, the API request includes an `anti_distillation: ['fake_tools']` parameter. The client sends this flag; the server-side behavior (presumably injecting decoy tool schemas) is not observable from the source alone.
+
+<FlowDiagram>
+  <Node icon="🔧">ANTI_DISTILLATION_CC feature flag enabled?</Node>
+  <Conn />
+  <Node icon="💻">Entrypoint === 'cli' (not SDK)</Node>
+  <Conn />
+  <Node icon="🏢">shouldIncludeFirstPartyOnlyBetas()</Node>
+  <Conn />
+  <Node icon="☁️">GrowthBook: tengu_anti_distill_fake_tool_injection</Node>
+  <Conn />
+  <Node icon="🛡️" variant="primary">All pass → send anti_distillation: ['fake_tools']</Node>
+</FlowDiagram>
+
+```typescript title="src/services/api/claude.ts (line 301-313)"
+if (
+  feature('ANTI_DISTILLATION_CC')
+    ? process.env.CLAUDE_CODE_ENTRYPOINT === 'cli' &&
+      shouldIncludeFirstPartyOnlyBetas() &&
+      getFeatureValue_CACHED_MAY_BE_STALE(
+        'tengu_anti_distill_fake_tool_injection', false)
+    : false
+) {
+  result.anti_distillation = ['fake_tools']
+}
+```
+
+### Streamlined Output Mode
+
+A separate "distillation-resistant" output format that reduces the information density of SDK outputs:
+
+<FlowDiagram>
+  <Node icon="📨">Incoming message</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Group label="Assistant (text)">
+      <Node variant="success">Keep intact</Node>
+    </Group>
+    <Group label="Assistant (tool calls)">
+      <Node variant="warning">Collapse to category counts</Node>
+    </Group>
+    <Group label="Other messages">
+      <Node variant="danger">Drop entirely</Node>
+    </Group>
+  </Branches>
+</FlowDiagram>
+
+Tool calls are collapsed into 5 category counts:
+
+| Category | Tools Included |
+|----------|---------------|
+| `searches` | Grep, Glob, WebSearch, LSP |
+| `reads` | Read, ListMcpResources |
+| `writes` | Write, Edit, NotebookEdit |
+| `commands` | Bash, PowerShell, Tmux, TaskStop |
+| `other` | Everything else |
+
+Counts accumulate across consecutive tool-only messages and reset when text appears. Tool result messages pass through unchanged. Thinking content is omitted entirely.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/utils/permissions/` | Permission and safety logic |
+| `src/services/policyLimits/` | Enterprise policy enforcement |
+| `src/tools/BashTool/` | Bash classifier and sandbox |
+| `src/services/api/claude.ts` | Anti-distillation fake_tools injection |
+| `src/utils/streamlinedTransform.ts` | Distillation-resistant output mode |

@@ -1,0 +1,235 @@
+---
+sidebar_position: 1
+title: Tool Architecture
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import ToolLifecycleStepper from '@site/src/components/ToolLifecycleStepper';
+
+# Tool Architecture
+
+The Tool system is the core abstraction of Claude Code — every action the AI takes (reading files, running commands, searching code) goes through a tool.
+
+## The Tool Interface
+
+Every tool implements a rich interface that handles validation, permissions, execution, and rendering. Click any step to see the details:
+
+<ToolLifecycleStepper />
+
+### Core Type
+
+`Tool.ts` serves as a shared type hub — it imports and re-exports types from commands, notifications, MCP, agents, messages, permissions, app-state, hooks, themes, and more. The Tool interface itself uses JSON Schema for API-facing definitions:
+
+<Tabs>
+<TabItem value="ts" label="TypeScript (actual)" default>
+
+```typescript
+// API-facing schema (sent to the model)
+type ToolInputJSONSchema = {
+  type: 'object'
+  properties?: Record<string, JSONSchemaProperty>
+  required?: string[]
+}
+
+// The full Tool interface
+type Tool<Input, Output, Progress> = {
+  // Identity
+  name: string
+  aliases?: string[]
+
+  // Schema — JSON Schema for API, Zod used internally by buildTool()
+  inputSchema: ToolInputJSONSchema
+
+  // Execution
+  call(
+    args: Input,
+    context: ToolContext,
+    canUseTool: PermissionChecker,
+    parentMessage: Message,
+    onProgress: (progress: Progress) => void
+  ): Promise<ToolResult<Output>>
+
+  // Permissions
+  checkPermissions(input: Input, context: ToolContext): PermissionResult
+  isReadOnly(input: Input): boolean
+  isDestructive(input: Input): boolean
+  isConcurrencySafe(input: Input): boolean
+
+  // Description (dynamic, based on input)
+  description(input: Input, options: DescriptionOptions): string
+
+  // Rendering
+  renderToolUseMessage(input: Input, options: RenderOptions): ReactNode
+  renderToolResultMessage(output: Output, progress: Progress, options: RenderOptions): ReactNode
+
+  // ... 20+ additional methods
+}
+```
+
+</TabItem>
+<TabItem value="py" label="Python equivalent">
+
+```python
+from typing import Any, Generic, TypeVar, Protocol
+from dataclasses import dataclass
+
+Input = TypeVar("Input")
+Output = TypeVar("Output")
+Progress = TypeVar("Progress")
+
+@dataclass
+class ToolResult(Generic[Output]):
+    data: Output | None
+
+class Tool(Protocol[Input, Output, Progress]):
+    """Every tool implements this interface."""
+
+    # Identity
+    name: str
+    aliases: list[str]
+
+    # Schema — JSON Schema dict sent to the model
+    input_schema: dict[str, Any]  # {"type": "object", "properties": {...}}
+
+    # Execution
+    async def call(
+        self,
+        args: Input,
+        context: "ToolContext",
+        can_use_tool: "PermissionChecker",
+        parent_message: "Message",
+        on_progress: "Callable[[Progress], None]",
+    ) -> ToolResult[Output]: ...
+
+    # Permissions
+    def check_permissions(self, input: Input, ctx: "ToolContext") -> "PermissionResult": ...
+    def is_read_only(self, input: Input) -> bool: ...
+    def is_destructive(self, input: Input) -> bool: ...
+    def is_concurrency_safe(self, input: Input) -> bool: ...
+
+    # Description (dynamic, based on input)
+    def description(self, input: Input, options: "DescriptionOptions") -> str: ...
+
+    # Rendering (in Claude Code this produces React/Ink nodes;
+    # a Python framework might return rich-text or terminal markup)
+    def render_tool_use(self, input: Input, options: "RenderOptions") -> Any: ...
+    def render_tool_result(self, output: Output, progress: Progress, options: "RenderOptions") -> Any: ...
+```
+
+</TabItem>
+</Tabs>
+
+## buildTool() Factory
+
+Tools are created via `buildTool()`, which fills in safe defaults for the many interface methods. You only supply the parts you care about — name, schema, and `call()`:
+
+<Tabs>
+<TabItem value="ts" label="TypeScript (actual)" default>
+
+```typescript
+const MyTool = buildTool({
+  name: 'MyTool',
+  inputSchema: z.object({
+    path: z.string().describe('File path to process'),
+  }),
+
+  async call(args, context, canUseTool, parentMsg, onProgress) {
+    // Permission check
+    const { allowed, updatedInput } = await canUseTool(args)
+    if (!allowed) return { data: null }
+
+    // Execute
+    const result = await doWork(updatedInput.path)
+
+    // Report progress
+    onProgress({ toolUseID: context.toolUseID, data: { type: 'output', content: result } })
+
+    return { data: result }
+  },
+
+  isReadOnly() { return true },
+  isConcurrencySafe() { return true },
+})
+```
+
+</TabItem>
+<TabItem value="py" label="Python equivalent">
+
+```python
+from pydantic import BaseModel, Field
+
+# Schema — Pydantic is Python's Zod
+class MyToolInput(BaseModel):
+    path: str = Field(description="File path to process")
+
+# build_tool fills in defaults, just like buildTool() in TS
+my_tool = build_tool(
+    name="MyTool",
+    input_schema=MyToolInput,
+
+    async def call(args, context, can_use_tool, parent_msg, on_progress):
+        # Permission check
+        allowed, updated_input = await can_use_tool(args)
+        if not allowed:
+            return ToolResult(data=None)
+
+        # Execute
+        result = await do_work(updated_input.path)
+
+        # Report progress
+        on_progress({"tool_use_id": context.tool_use_id, "data": {"type": "output", "content": result}})
+
+        return ToolResult(data=result),
+
+    is_read_only=lambda _: True,
+    is_concurrency_safe=lambda _: True,
+)
+```
+
+</TabItem>
+</Tabs>
+
+### What buildTool() Provides
+
+- Default `description()` / `description()` from the tool name
+- Default `renderToolUseMessage()` / `render_tool_use()` showing input summary
+- Default `renderToolResultMessage()` / `render_tool_result()` showing output
+- Default `isDestructive()` / `is_destructive()` returning `False`
+- Default `checkPermissions()` / `check_permissions()` returning `allow`
+- Schema validation wrapper around `call()` (Zod in TS, Pydantic in Python)
+
+## Tool Categories
+
+| Category | Tools | Permission Level |
+|----------|-------|-----------------|
+| **File Read** | `Read`, `Glob`, `Grep` | Read-only, concurrent-safe |
+| **File Write** | `FileEdit`, `FileWrite` | Requires approval in default mode |
+| **Shell** | `Bash`, `PowerShell` | Requires approval, destructive |
+| **Search** | `WebSearch`, `WebFetch` | Read-only |
+| **Agent** | `Agent`, `SendMessage` | Spawns sub-processes |
+| **Task** | `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`, `TaskOutput`, `TaskStop` | Manages background work |
+| **Planning** | `EnterPlanMode`, `ExitPlanMode` | Mode switches |
+| **MCP** | `MCPTool`, `ReadMcpResource`, `ListMcpResources` | Depends on MCP server |
+| **Infrastructure** | `SkillTool`, `ToolSearch`, `Sleep` | Internal |
+
+## Tool Registration
+
+Tools are registered during initialization in `main.tsx` from four sources:
+
+1. **Built-in tools** loaded from `src/tools/` (40+)
+2. **MCP tools** wrapped as `MCPTool` instances
+3. **Plugin tools** loaded dynamically from manifests
+4. All merged into a single tools array
+5. Tool definitions included in every API call
+
+See [Tool Sources](./tool-sources) for details on each source, including MCP wrapping, plugin loading, and how skills integrate.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/Tool.ts` | Tool interface and types (~466 lines) |
+| `src/tools/` | 45+ built-in tool implementations |
+| `src/services/tools/StreamingToolExecutor.ts` | Execution engine |
+| `src/services/tools/toolOrchestration.ts` | Orchestration logic |

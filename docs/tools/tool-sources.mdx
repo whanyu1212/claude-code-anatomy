@@ -1,0 +1,142 @@
+---
+sidebar_position: 2
+title: Tool Sources
+---
+
+import { ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Tool Sources
+
+Where do the model's tools come from? Claude Code merges tools from four sources into a single array before every API call:
+
+<ArchDiagram>
+  <ArchLayer label="Sources">
+    <ArchBox accent>Built-in Tools (src/tools/)</ArchBox>
+    <ArchBox accent>MCP Server Tools</ArchBox>
+    <ArchBox>Plugin Tools</ArchBox>
+    <ArchBox>Skill Tool</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Merge">
+    <ArchBox accent>Unified tools array — included in every API call</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+## 1. Built-in Tools
+
+The 40+ tools that ship with Claude Code, each in its own directory under `src/tools/`. These implement the full [Tool interface](./tool-architecture) with `buildTool()`:
+
+- **File operations** — Read, Write, Edit, Glob, Grep, NotebookEdit
+- **Shell** — Bash, PowerShell
+- **Web** — WebSearch, WebFetch
+- **Agents** — Agent, SendMessage
+- **Tasks** — TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop, TodoWrite
+- **Planning** — EnterPlanMode, ExitPlanMode, EnterWorktree, ExitWorktree
+- **Infrastructure** — Skill, ToolSearch, AskUserQuestion, Config, Sleep, LSP, StructuredOutput
+
+See the [Built-in Tools catalog](./built-in-tools) for the full interactive list.
+
+## 2. MCP Server Tools
+
+[MCP (Model Context Protocol)](/extensions/mcp-integration) servers expose tools that Claude Code wraps as `MCPTool` instances. Each MCP tool becomes a tool the model can call, named `mcp__{server}__{tool}`:
+
+```typescript title="src/tools/MCPTool/MCPTool.ts (simplified)"
+// An MCP server "github" exposes a tool "create_issue"
+// → becomes tool named "mcp__github__create_issue"
+
+const mcpTool = {
+  name: `mcp__${serverName}__${toolName}`,
+  inputSchema: toolDefinition.inputSchema,  // from MCP server
+
+  async call(args, context) {
+    return await mcpClient.callTool(serverName, toolName, args)
+  },
+}
+```
+
+MCP tools go through the same permission checks and execution pipeline as built-in tools. Servers are configured at three scopes:
+
+| Scope | Config File | Who Controls |
+|-------|------------|--------------|
+| Project | `.mcp.json` in project root | Project maintainers |
+| User | `~/.claude/mcp.json` | Individual user |
+| Enterprise | Managed settings | Organization admins |
+
+MCP servers also expose **resources** (read-only data) accessed via `ListMcpResources` and `ReadMcpResource` tools, and may require **authentication** handled by the `McpAuth` tool.
+
+For full details on server types, configuration, and connection lifecycle, see [MCP Integration](/extensions/mcp-integration).
+
+## 3. Plugin Tools
+
+[Plugins](/extensions/plugins-skills) are full CLI extensions that can register additional tools. A plugin declares its capabilities in a manifest, and its tools are loaded dynamically during initialization:
+
+```typescript title="Plugin tool registration (simplified)"
+// Plugin manifest declares tools
+{
+  name: "my-plugin",
+  capabilities: {
+    tools: [
+      {
+        name: "MyCustomTool",
+        inputSchema: { ... },
+        handler: "./tools/my-custom-tool.js"
+      }
+    ]
+  }
+}
+```
+
+Plugin tools are merged into the same tools array and follow the same execution pipeline. They can also add commands and hooks.
+
+For plugin authoring and lifecycle details, see [Plugins & Skills](/extensions/plugins-skills).
+
+## 4. Skill Tool
+
+[Skills](/extensions/plugins-skills#skills) are lightweight prompt templates (markdown files with YAML frontmatter). They're not tools themselves — they're `PromptCommands` invoked via `/skill-name`. However, the model can invoke skills programmatically via the built-in `Skill` tool:
+
+```typescript title="src/tools/SkillTool/SkillTool.ts"
+Skill({
+  skill: "commit",
+  args: "-m 'Fix auth bug'"
+})
+// → Loads the skill's markdown prompt
+// → Injects it into the conversation
+```
+
+The `Skill` tool is an internal infrastructure tool — the model uses it to invoke skills discovered via `ToolSearch`.
+
+## Registration Flow
+
+All sources merge during initialization in `main.tsx`:
+
+```typescript title="src/main.tsx (simplified)"
+// 1. Load built-in tools
+const builtinTools = loadBuiltinTools()      // 40+ from src/tools/
+
+// 2. Connect MCP servers, wrap their tools
+const mcpTools = await connectMCPServers()   // mcp__{server}__{tool}
+
+// 3. Load plugin tools
+const pluginTools = await loadPlugins()      // From plugin manifests
+
+// 4. Merge into single array
+const allTools = [...builtinTools, ...mcpTools, ...pluginTools]
+
+// 5. Include in every API call
+api.call({
+  tools: allTools.map(t => t.inputSchema),   // JSON Schema definitions
+  // ...
+})
+```
+
+Every tool — regardless of source — goes through the same [execution pipeline](./tool-execution): validation, permission check, hooks, execution, result formatting.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/tools/` | 40+ built-in tool directories |
+| `src/tools/MCPTool/` | MCP tool wrapper |
+| `src/services/mcp/` | MCP client and configuration |
+| `src/services/plugins/` | Plugin management |
+| `src/tools/SkillTool/` | Skill invocation tool |

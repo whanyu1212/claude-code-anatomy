@@ -1,0 +1,222 @@
+/* ================================================================
+   Initialization Timeline — Phased startup visualization
+   ================================================================ */
+
+.container {
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  background: #0f0f0f;
+  border: 1px solid #2e2e2e;
+  border-radius: 12px;
+}
+
+[data-theme='light'] .container {
+  background: #fafafa;
+  border-color: #e0e0e0;
+}
+
+/* The vertical timeline rail */
+.timeline {
+  position: relative;
+  padding-left: 40px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, #2dd4bf40, #2dd4bf10);
+}
+
+[data-theme='light'] .timeline::before {
+  background: linear-gradient(to bottom, #0d948840, #0d948810);
+}
+
+/* Each phase */
+.phase {
+  position: relative;
+  margin-bottom: 1.25rem;
+}
+
+.phase:last-child {
+  margin-bottom: 0;
+}
+
+/* Dot on the rail */
+.phase::before {
+  content: '';
+  position: absolute;
+  left: -29px;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  border: 2px solid #0f0f0f;
+  z-index: 1;
+}
+
+[data-theme='light'] .phase::before {
+  background: #0d9488;
+  border-color: #fafafa;
+}
+
+.phaseComplete::before {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.phaseHighlight::before {
+  background: #2dd4bf;
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.5);
+  width: 12px;
+  height: 12px;
+  left: -30px;
+  top: 11px;
+}
+
+/* Phase header row */
+.phaseHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.375rem;
+}
+
+.phaseIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(45, 212, 191, 0.08);
+  font-size: 16px;
+  line-height: 1;
+}
+
+[data-theme='light'] .phaseIcon {
+  background: rgba(13, 148, 136, 0.08);
+}
+
+.phaseName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='light'] .phaseName {
+  color: #111111;
+}
+
+.phaseFile {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #52525b;
+  margin-left: auto;
+}
+
+/* Phase description */
+.phaseDesc {
+  font-size: 13px;
+  color: #a1a1aa;
+  line-height: 1.5;
+  margin-left: 42px;
+}
+
+[data-theme='light'] .phaseDesc {
+  color: #52525b;
+}
+
+/* Sub-items within a phase */
+.phaseItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 42px;
+  margin-top: 6px;
+}
+
+.phaseItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #1a1a1a;
+  border: 1px solid #252525;
+  font-size: 12px;
+  color: #d4d4d8;
+  white-space: nowrap;
+}
+
+[data-theme='light'] .phaseItem {
+  background: #f0f0f0;
+  border-color: #e0e0e0;
+  color: #3f3f46;
+}
+
+.phaseItemAccent {
+  border-color: #2dd4bf30;
+  color: #2dd4bf;
+}
+
+[data-theme='light'] .phaseItemAccent {
+  border-color: #0d948830;
+  color: #0d9488;
+}
+
+/* Separator between major phases */
+.phaseDivider {
+  position: relative;
+  margin: 0.5rem 0;
+  padding-left: 42px;
+}
+
+.phaseDividerLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #3f3f46;
+}
+
+/* The arrow at the top */
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  background: rgba(45, 212, 191, 0.06);
+  border: 1px solid rgba(45, 212, 191, 0.15);
+  font-size: 13px;
+  font-weight: 500;
+  color: #2dd4bf;
+}
+
+[data-theme='light'] .trigger {
+  background: rgba(13, 148, 136, 0.06);
+  border-color: rgba(13, 148, 136, 0.15);
+  color: #0d9488;
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .phaseFile {
+    display: none;
+  }
+
+  .phaseItems {
+    margin-left: 0;
+  }
+}

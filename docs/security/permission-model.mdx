@@ -1,0 +1,182 @@
+---
+sidebar_position: 1
+title: Permission Model
+---
+
+import { FlowDiagram, Node, Conn, Arrow, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+
+# Permission Model
+
+How Claude Code controls what the AI can and cannot do — permission modes, rules, classifiers, and the approval flow.
+
+## Permission Modes
+
+Every session operates in one of several permission modes:
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `default` | Ask user for each tool use | Normal interactive use |
+| `acceptEdits` | Auto-approve file edits only | Trust file changes, still ask for shell |
+| `bypassPermissions` | Allow everything | Fully trusted automation |
+| `dontAsk` | Auto-approve all tools | Headless/CI mode |
+| `plan` | Structured planning mode | Plan before execute |
+| `auto` (internal) | Classifier-based auto-approval | Smart auto-mode with safety net |
+
+## Permission Resolution Flow
+
+<FlowDiagram>
+  <Node icon="🤖">Model wants to use a tool</Node>
+  <Conn />
+  <Node icon="✅">Validate input schema</Node>
+  <Conn />
+  <Node icon="🔒" variant="purple">Check permission rules</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Node variant="success">Rule: allow</Node>
+    <Node variant="danger">Rule: deny → Return denial</Node>
+    <Node variant="subtle">No matching rule</Node>
+  </Branches>
+  <Conn />
+  <Node variant="purple">Check permission mode</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <FlowDiagram>
+      <Node variant="primary">default</Node>
+      <Conn size="short" />
+      <Node icon="❓">Show approval dialog</Node>
+      <Conn size="short" />
+      <Branches cols={2}>
+        <Node variant="success">Approved</Node>
+        <Node variant="danger">Denied</Node>
+      </Branches>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">auto</Node>
+      <Conn size="short" />
+      <Node icon="⚙️">Bash classifier</Node>
+      <Conn size="short" />
+      <Branches cols={2}>
+        <Node variant="success">Safe → Proceed</Node>
+        <Node variant="warning">Unsafe → Ask user</Node>
+      </Branches>
+    </FlowDiagram>
+    <FlowDiagram>
+      <Node variant="primary">acceptEdits</Node>
+      <Conn size="short" />
+      <Node icon="❓">Is file edit?</Node>
+      <Conn size="short" />
+      <Branches cols={2}>
+        <Node variant="success">Yes → Proceed</Node>
+        <Node variant="warning">No → Ask user</Node>
+      </Branches>
+    </FlowDiagram>
+  </Branches>
+  <Conn />
+  <Node icon="🔧">Pre-tool hooks</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="danger">Hook vetoed — Denied</Node>
+    <Node variant="success">Proceed — Execute tool</Node>
+  </Branches>
+</FlowDiagram>
+
+## Permission Rules
+
+Rules are pattern-based matchers that pre-authorize or block specific tool uses:
+
+```
+Bash(git *)              # Allow all git commands
+Bash(npm test)           # Allow npm test specifically
+FileEdit(/src/*)         # Allow edits in src/
+FileEdit(/node_modules/*) # (would deny edits in node_modules)
+MCPTool(mcp__github__*)  # Allow all GitHub MCP tools
+```
+
+### Rule Sources
+
+Rules come from multiple places, evaluated in order:
+
+1. **CLI flags** — `--allow Bash(git *)`, `--deny FileEdit(*)`
+2. **User settings** — `~/.claude/settings.json`
+3. **Project settings** — `.claude.json` in repo root
+4. **Local settings** — `.claude/local.json`
+5. **Enterprise policies** — managed by org admin, cannot be overridden
+
+### Rule Precedence
+
+<ArchDiagram>
+  <ArchLayer label="Highest Priority">
+    <ArchBox accent>Enterprise Policy</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer>
+    <ArchBox>Project Settings</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer>
+    <ArchBox>User Settings</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer>
+    <ArchBox>Local Settings</ArchBox>
+  </ArchLayer>
+  <ArchDivider />
+  <ArchLayer label="Lowest Priority">
+    <ArchBox>CLI Flags</ArchBox>
+  </ArchLayer>
+</ArchDiagram>
+
+Enterprise policies always win — if an admin blocks `Bash(rm -rf *)`, no local setting can override it.
+
+## Bash Classifier
+
+In `auto` mode, the Bash tool has an additional safety layer — a classifier that evaluates commands before execution:
+
+### What the Classifier Checks
+- **Destructive commands** — `rm -rf`, `git reset --hard`, etc.
+- **Network commands** — `curl` to unknown hosts, `wget`, etc.
+- **Privilege escalation** — `sudo`, `su`, etc.
+- **System modification** — `chmod`, `chown`, `systemctl`, etc.
+
+### Classifier Decision
+- **Allow** — command is clearly safe (e.g., `git status`, `ls`, `cat`)
+- **Ask** — command might be risky, ask the user
+- **Deny** — command is clearly dangerous
+
+## User Approval Dialog
+
+When permission mode requires approval, the REPL shows an interactive dialog:
+
+```
+╭─────────────────────────────────────────╮
+│ Claude wants to run:                     │
+│                                          │
+│   Bash: rm -rf dist/                     │
+│                                          │
+│ [y] Allow  [n] Deny  [a] Always allow   │
+╰─────────────────────────────────────────╯
+```
+
+Options:
+- **Allow** — permit this one time
+- **Deny** — block this one time
+- **Always allow** — add a permanent permission rule
+
+## Decision Handlers
+
+The permission system supports different decision handlers depending on context:
+
+| Context | Handler | How It Works |
+|---------|---------|-------------|
+| Interactive REPL | Interactive | Shows UI dialog to user |
+| Coordinator mode | Coordinator | Delegates to coordinator worker |
+| Swarm worker | Swarm | Syncs with leader via mailbox |
+| Background task | Background | Auto-deny (no UI available) |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/types/permissions.ts` | Permission type definitions |
+| `src/utils/permissions/` | Permission logic (20+ files) |
+| `src/hooks/useCanUseTool.tsx` | Permission check React hook |

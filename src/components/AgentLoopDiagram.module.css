@@ -1,0 +1,303 @@
+/* ================================================================
+   Agent Loop Diagram — Interactive flow visualization
+   ================================================================ */
+
+.container {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: #0f0f0f;
+  border: 1px solid #2e2e2e;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+[data-theme='light'] .container {
+  background: #fafafa;
+  border-color: #e0e0e0;
+}
+
+/* ----------------------------------------------------------------
+   Flow Track
+   ---------------------------------------------------------------- */
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+/* Vertical connector line */
+.connector {
+  width: 2px;
+  height: 24px;
+  background: linear-gradient(to bottom, #2dd4bf40, #2dd4bf20);
+  margin: 0 auto;
+}
+
+[data-theme='light'] .connector {
+  background: linear-gradient(to bottom, #0d948840, #0d948820);
+}
+
+.connectorBranch {
+  width: 2px;
+  height: 16px;
+  background: #2dd4bf20;
+  margin: 0 auto;
+}
+
+/* ----------------------------------------------------------------
+   Step Nodes
+   ---------------------------------------------------------------- */
+.step {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid #1e1e1e;
+  background: #161616;
+  transition: all 0.25s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.step:hover {
+  border-color: #2dd4bf40;
+  background: #1a1a1a;
+  transform: translateX(4px);
+}
+
+[data-theme='light'] .step {
+  background: #ffffff;
+  border-color: #e8e8e8;
+}
+
+[data-theme='light'] .step:hover {
+  border-color: #0d948840;
+  background: #f8fffe;
+}
+
+.stepActive {
+  border-color: #2dd4bf60;
+  background: #0d2d2a;
+  box-shadow: 0 0 20px rgba(45, 212, 191, 0.08);
+}
+
+[data-theme='light'] .stepActive {
+  border-color: #0d948860;
+  background: #f0fdfa;
+}
+
+/* Step number badge */
+.stepNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2dd4bf20, #14b8a610);
+  color: #2dd4bf;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  border: 1px solid #2dd4bf30;
+}
+
+[data-theme='light'] .stepNumber {
+  background: linear-gradient(135deg, #0d948820, #14b8a610);
+  color: #0d9488;
+  border-color: #0d948830;
+}
+
+.stepContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='light'] .stepTitle {
+  color: #111111;
+}
+
+.stepDesc {
+  font-size: 13px;
+  color: #71717a;
+  line-height: 1.5;
+}
+
+.stepMeta {
+  font-size: 11px;
+  color: #52525b;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 6px;
+}
+
+/* ----------------------------------------------------------------
+   Loop Indicator
+   ---------------------------------------------------------------- */
+.loopWrapper {
+  position: relative;
+  padding: 0.75rem;
+  border: 1px dashed #2dd4bf30;
+  border-radius: 12px;
+  margin: 0.5rem 0;
+}
+
+[data-theme='light'] .loopWrapper {
+  border-color: #0d948830;
+}
+
+.loopLabel {
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: #0f0f0f;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2dd4bf;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+[data-theme='light'] .loopLabel {
+  background: #fafafa;
+  color: #0d9488;
+}
+
+.loopInner {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ----------------------------------------------------------------
+   Decision Node
+   ---------------------------------------------------------------- */
+.decision {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1a1520, #161616);
+  border: 1px solid #3b0764;
+  text-align: center;
+}
+
+[data-theme='light'] .decision {
+  background: linear-gradient(135deg, #faf5ff, #ffffff);
+  border-color: #d8b4fe;
+}
+
+.decisionText {
+  font-size: 14px;
+  font-weight: 600;
+  color: #c084fc;
+  letter-spacing: -0.01em;
+}
+
+[data-theme='light'] .decisionText {
+  color: #7c3aed;
+}
+
+/* ----------------------------------------------------------------
+   Branch paths
+   ---------------------------------------------------------------- */
+.branches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.branchYes, .branchNo {
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.branchYes {
+  background: rgba(45, 212, 191, 0.08);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  color: #2dd4bf;
+}
+
+[data-theme='light'] .branchYes {
+  background: rgba(13, 148, 136, 0.08);
+  border-color: rgba(13, 148, 136, 0.2);
+  color: #0d9488;
+}
+
+.branchNo {
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  color: #f43f5e;
+}
+
+/* ----------------------------------------------------------------
+   Detail Panel
+   ---------------------------------------------------------------- */
+.detailPanel {
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #111111;
+  border-radius: 8px;
+  border: 1px solid #1e1e1e;
+  font-size: 13px;
+  color: #a1a1aa;
+  line-height: 1.6;
+  animation: fadeIn 0.2s ease;
+}
+
+[data-theme='light'] .detailPanel {
+  background: #f5f5f5;
+  border-color: #e8e8e8;
+  color: #52525b;
+}
+
+.detailPanel code {
+  background: #1e1e1e;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #2dd4bf;
+}
+
+[data-theme='light'] .detailPanel code {
+  background: #e8e8e8;
+  color: #0d9488;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ----------------------------------------------------------------
+   Responsive
+   ---------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .step {
+    padding: 0.75rem 1rem;
+  }
+
+  .branches {
+    grid-template-columns: 1fr;
+  }
+}

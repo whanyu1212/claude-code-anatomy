@@ -1,0 +1,408 @@
+---
+sidebar_position: 3
+title: Sub-Agents & Coordination
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { FlowDiagram, Node, Conn, Arrow, Branches, Group } from '@site/src/components/Diagrams';
+
+# Sub-Agents & Coordination
+
+The agent loop doesn't just run once — it can spawn **child loops**. When a task is too complex for a single context, Claude Code creates sub-agents that work autonomously and return results.
+
+## The Agent Tool
+
+The `Agent` tool is how Claude spawns sub-agents:
+
+<FlowDiagram>
+  <Node icon="🤖" variant="primary">Main Agent</Node>
+  <Conn />
+  <Node icon="🔧">Agent Tool: spawn sub-agent</Node>
+  <Conn />
+  <Group label="Sub-Agent">
+    <Node icon="🤖">Sub-Agent</Node>
+    <Conn size="short" />
+    <Branches cols={3}>
+      <Node variant="subtle">Own conversation context</Node>
+      <Node variant="subtle">Filtered tool set</Node>
+      <Node variant="subtle">Custom system prompt</Node>
+    </Branches>
+  </Group>
+  <Conn />
+  <Node icon="⚙️">Autonomous work</Node>
+  <Conn />
+  <Node icon="📤">Return result to main agent</Node>
+</FlowDiagram>
+
+### Key Parameters
+
+```typescript title="src/tools/AgentTool/AgentTool.ts"
+Agent({
+  prompt: "Search the codebase for all API endpoints",
+  description: "Find API endpoints",     // Short summary (3-5 words)
+  subagent_type: "Explore",              // Agent type
+  model: "sonnet",                        // Optional model override
+  isolation: "worktree",                  // Optional git worktree isolation
+  run_in_background: true,                // Run as background task
+})
+```
+
+### A Universal Abstraction
+
+This shape — prompt, model, tools, delegation mode — appears in every major framework. The core idea is the same: configure an LLM with instructions and capabilities, then let it run autonomously.
+
+<Tabs>
+<TabItem value="claude" label="Claude Code" default>
+
+```typescript title="src/tools/AgentTool/AgentTool.ts"
+Agent({
+  prompt: "Find all API endpoints",
+  description: "Find endpoints",
+  subagent_type: "Explore",       // filters tools
+  model: "sonnet",
+  run_in_background: true,
+})
+```
+
+Sub-agents are **tools** — the model decides when to spawn one. Tool filtering by agent type.
+
+</TabItem>
+<TabItem value="adk" label="Google ADK">
+
+```python title="google/adk/agents/llm_agent.py"
+researcher = LlmAgent(
+    name="researcher",
+    instruction="Find all API endpoints",
+    model="gemini-2.5-flash",
+    tools=[search, read_file],
+)
+
+orchestrator = LlmAgent(
+    name="orchestrator",
+    instruction="Delegate research tasks",
+    sub_agents=[researcher],       # agent tree
+)
+```
+
+Sub-agents are **tree children** — the parent agent delegates via the framework.
+
+</TabItem>
+<TabItem value="openai" label="OpenAI Agents">
+
+```python title="agents/agent.py"
+researcher = Agent(
+    name="researcher",
+    instructions="Find all API endpoints",
+    model="gpt-4.1",
+    tools=[search, read_file],
+)
+
+orchestrator = Agent(
+    name="orchestrator",
+    instructions="Delegate research tasks",
+    handoffs=[researcher],         # or:
+    tools=[researcher.as_tool(     # agent-as-tool
+        tool_name="research",
+        tool_description="Research codebase",
+    )],
+)
+```
+
+Sub-agents are either **handoffs** (transfer control) or **tools** (call and return).
+
+</TabItem>
+<TabItem value="langgraph" label="LangChain / LangGraph">
+
+```python title="langchain/agents/factory.py"
+from langchain.agents import create_agent
+
+researcher = create_agent(
+    model="anthropic:claude-sonnet-4-20250514",
+    tools=[search, read_file],
+)
+
+# Sub-agent as a node in the graph
+workflow = StateGraph(State)
+workflow.add_node("researcher", researcher)
+workflow.add_node("orchestrator", orchestrator)
+workflow.add_edge("orchestrator", "researcher")
+```
+
+Sub-agents are **graph nodes** — orchestration is explicit in the graph topology.
+
+</TabItem>
+</Tabs>
+
+| Concept | Claude Code | Google ADK | OpenAI Agents | LangGraph |
+|---------|-------------|------------|---------------|-----------|
+| **Agent init** | `Agent({prompt, type, model})` | `LlmAgent(instruction, model, tools)` | `Agent(instructions, model, tools)` | `create_agent(model, tools)` |
+| **Delegation** | `run_in_background` | `sub_agents` tree | `handoffs` / `as_tool()` | Graph edges |
+| **Tool filtering** | Per agent type | Per agent instance | Per agent instance | Per graph node |
+| **Isolation** | Git worktree | Separate sessions | Separate context | Separate state |
+
+## Agent Types
+
+Each type has a filtered set of tools — this constrains what the sub-agent can do:
+
+| Agent Type | Purpose | Available Tools |
+|------------|---------|-----------------|
+| `general-purpose` | Complex multi-step tasks | All tools |
+| `Explore` | Fast codebase exploration | Read-only: Read, Glob, Grep, WebFetch, WebSearch |
+| `Plan` | Design implementation plans | Read-only: Read, Glob, Grep, WebFetch, WebSearch |
+| `code-simplifier` | Simplify and refine code | All tools |
+| Custom (via plugins) | Domain-specific tasks | Configured per agent |
+
+**Why filter tools?** Explore agents can't accidentally modify files. Plan agents focus on research without side effects. Fewer tools means a smaller decision space, improving focus.
+
+```typescript title="src/tools/AgentTool/AgentTool.ts (simplified)"
+function getToolsForAgentType(type: string, allTools: Tool[]): Tool[] {
+  switch (type) {
+    case 'Explore':
+    case 'Plan':
+      return allTools.filter(t =>
+        t.isReadOnly() && !['Agent', 'Edit', 'Write', 'Bash'].includes(t.name)
+      )
+    case 'general-purpose':
+    case 'code-simplifier':
+      return allTools // Full access
+    default:
+      return allTools
+  }
+}
+```
+
+## Agent Lifecycle
+
+<FlowDiagram>
+  <Node icon="🤖" variant="primary">Main Agent</Node>
+  <Conn />
+  <Node icon="🔧">Agent(type, prompt, description)</Node>
+  <Conn />
+  <Node icon="🤖">Create Sub-Agent with filtered tools + custom prompt</Node>
+  <Conn />
+  <Node icon="📡">Query Anthropic API with sub-agent system prompt</Node>
+  <Conn />
+  <Group label="Agentic Loop">
+    <Node icon="🔄">Execute tools</Node>
+    <Conn size="short" />
+    <Node icon="📡">Send tool results to API</Node>
+    <Conn size="short" />
+    <Node icon="🤖">Continue or end_turn</Node>
+  </Group>
+  <Conn />
+  <Node icon="📤">Final result returned to main agent</Node>
+</FlowDiagram>
+
+### Foreground vs Background
+
+| Mode | Behavior |
+|------|----------|
+| **Foreground** (default) | Blocks main agent until complete. Result immediately available. |
+| **Background** (`run_in_background: true`) | Main agent continues. Notified via `<task-notification>` on completion. Output retrieved via `TaskOutput`. |
+
+### SendMessage — Continue a Running Agent
+
+Previously spawned agents can be continued without losing context:
+
+```typescript title="src/tools/SendMessageTool/SendMessageTool.ts"
+SendMessage({
+  to: "agent-id-or-name",
+  message: "Now also check the test files"
+})
+```
+
+## Git Worktree Isolation
+
+When `isolation: "worktree"` is specified:
+
+1. A temporary git worktree is created (isolated copy of the repo)
+2. The sub-agent works in this worktree
+3. If changes are made, the worktree path and branch are returned
+4. If no changes, the worktree is automatically cleaned up
+
+This prevents sub-agents from conflicting with each other or with the main agent's work.
+
+## Coordinator Mode
+
+When `COORDINATOR_MODE` is enabled (feature-flagged, internal), Claude Code splits into a **coordinator** and **workers**:
+
+<FlowDiagram>
+  <Node icon="👤">User: "Implement feature X and write tests"</Node>
+  <Conn />
+  <Node icon="🤖" variant="primary">Coordinator decomposes into subtasks</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Group label="Worker 1">
+      <Node icon="🤖" variant="highlight">Agent("Implement feature X")</Node>
+      <Conn size="short" />
+      <Node icon="⚙️">Research, implement, verify</Node>
+      <Conn size="short" />
+      <Node icon="✅" variant="success">task-notification: completed</Node>
+    </Group>
+    <Group label="Worker 2">
+      <Node icon="🤖" variant="highlight">Agent("Write tests for feature X")</Node>
+      <Conn size="short" />
+      <Node icon="⚙️">Analyze, write tests, run</Node>
+      <Conn size="short" />
+      <Node icon="✅" variant="success">task-notification: completed</Node>
+    </Group>
+  </Branches>
+  <Conn />
+  <Node icon="🤖" variant="primary">Coordinator retrieves results, synthesizes</Node>
+  <Conn />
+  <Node icon="📤">Response to User</Node>
+</FlowDiagram>
+
+| Role | Responsibilities | Tools Available |
+|------|-----------------|-----------------|
+| **Coordinator** | Decompose task, delegate, synthesize results | Agent, SendMessage, TaskStop |
+| **Worker** | Execute assigned subtask autonomously | Subset of all tools |
+
+The coordinator gets a specialized system prompt instructing it to delegate rather than execute directly, decompose tasks into parallel subtasks, and synthesize worker results.
+
+### Communication Flow
+
+| Direction | Mechanism |
+|-----------|-----------|
+| Coordinator → Worker | `Agent` tool with `run_in_background: true` |
+| Worker → Coordinator | Task completion notifications (`<task-notification>`) |
+| Coordinator → Running Worker | `SendMessage` for follow-up instructions |
+
+## Swarm Mode (Agent Teams)
+
+While coordinator mode uses background agents, swarm mode creates **teams of in-process agents** that can see each other in the terminal and communicate via a shared mailbox.
+
+:::info Feature flag
+Swarm mode is gated behind the `KAIROS` feature flag and compiled out of the public build (v2.1.88). The infrastructure is substantial (~30 source files) but not yet user-facing.
+:::
+
+### Architecture
+
+<FlowDiagram>
+  <Node icon="👤">User: TeamCreate("build-team")</Node>
+  <Conn />
+  <Node icon="🤖" variant="primary">Team Leader (your session)</Node>
+  <Conn size="short" />
+  <Branches cols={3}>
+    <Group label="Teammate A">
+      <Node icon="🤖" variant="highlight">In-process agent</Node>
+      <Conn size="short" />
+      <Node variant="subtle">Own context + filtered tools</Node>
+    </Group>
+    <Group label="Teammate B">
+      <Node icon="🤖" variant="highlight">In-process agent</Node>
+      <Conn size="short" />
+      <Node variant="subtle">Own context + filtered tools</Node>
+    </Group>
+    <Group label="Teammate C">
+      <Node icon="🤖" variant="highlight">In-process agent</Node>
+      <Conn size="short" />
+      <Node variant="subtle">Own context + filtered tools</Node>
+    </Group>
+  </Branches>
+  <Conn />
+  <Node icon="📬" variant="primary">Mailbox — shared async message queue</Node>
+  <Conn />
+  <Node icon="🔒">Leader Permission Bridge — leader handles all approval dialogs</Node>
+</FlowDiagram>
+
+### Backends
+
+Teammates can be visualized in three ways:
+
+| Backend | How It Works | Visual |
+|---------|-------------|--------|
+| `tmux` | Creates tmux panes for each teammate | Split terminal panes |
+| `iterm2` | Uses iTerm2 native split panes via `it2` CLI | Native iTerm2 splits |
+| `in-process` | Runs in the same Node.js process with isolated context | Shared terminal |
+
+```typescript title="src/utils/swarm/backends/types.ts"
+type BackendType = 'tmux' | 'iterm2' | 'in-process'
+```
+
+### Mailbox System
+
+Agents communicate via an async message queue — the `Mailbox`:
+
+```typescript title="src/utils/mailbox.ts"
+type MessageSource = 'user' | 'teammate' | 'system' | 'tick' | 'task'
+
+type Message = {
+  id: string
+  source: MessageSource
+  content: string
+  from?: string          // Sender agent name
+  color?: string         // Agent color for UI
+  timestamp: string
+}
+
+class Mailbox {
+  send(msg: Message): void      // Push message, wake waiters
+  poll(fn): Message | undefined  // Non-blocking check
+  receive(fn): Promise<Message>  // Async wait for matching message
+}
+```
+
+The `MailboxContext` React provider makes the mailbox available to all components. Each teammate can send messages to the shared mailbox, and other teammates poll or await messages.
+
+### Team Management
+
+Teams are created and destroyed via tools:
+
+```typescript title="src/tools/TeamCreateTool/TeamCreateTool.ts"
+TeamCreate({
+  team_name: "build-team",
+  description: "Implement and test the auth module",
+  agent_type: "researcher",    // Role of team lead
+})
+// → Creates team file at ~/.claude/teams/{team_name}.json
+// → Spawns lead agent with assigned color
+// → Returns { team_name, team_file_path, lead_agent_id }
+```
+
+```typescript title="src/tools/TeamDeleteTool/TeamDeleteTool.ts"
+TeamDelete()
+// → Cleans up team files and task directories
+// → Kills teammate processes
+```
+
+### Leader Permission Bridge
+
+When a teammate needs permission for a tool call (e.g., file write), the request is **bridged to the leader agent** who shows the approval dialog to the user. This prevents multiple teammates from competing for user input:
+
+```typescript title="src/utils/swarm/leaderPermissionBridge.ts"
+// Leader registers its permission UI
+registerLeaderToolUseConfirmQueue(setter)
+
+// Teammates route permission requests through the bridge
+// → Leader shows approval dialog
+// → Decision forwarded back to teammate
+```
+
+### Swarm vs Coordinator
+
+| Aspect | Coordinator Mode | Swarm Mode |
+|--------|-----------------|------------|
+| **Agent location** | Background processes | In-process (shared runtime) |
+| **Communication** | Task notifications + SendMessage | Shared mailbox queue |
+| **Visibility** | No terminal UI for workers | Terminal panes per teammate |
+| **Permission handling** | Each worker independent | Leader bridges all approvals |
+| **Team persistence** | None (session-scoped) | Team files on disk |
+| **Feature flag** | `COORDINATOR_MODE` | `KAIROS` |
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/tools/AgentTool/` | Agent tool implementation |
+| `src/tools/SendMessageTool/` | Agent communication |
+| `src/buddy/` | Sub-agent system (6 files) |
+| `src/coordinator/coordinatorMode.ts` | Coordinator logic |
+| `src/utils/swarm/` | Swarm system (15+ files) |
+| `src/utils/swarm/backends/` | Terminal backend implementations |
+| `src/utils/mailbox.ts` | Async message queue |
+| `src/context/mailbox.tsx` | React context provider |
+| `src/utils/swarm/leaderPermissionBridge.ts` | Permission delegation |
+| `src/tools/TeamCreateTool/` | Team creation tool |
+| `src/tools/TeamDeleteTool/` | Team cleanup tool |
