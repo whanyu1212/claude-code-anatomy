@@ -53,6 +53,13 @@ const config: Config = {
       style: 'dark',
       items: [
         {
+          type: 'docSidebar',
+          sidebarId: 'anatomySidebar',
+          position: 'left',
+          label: 'Docs',
+          className: 'navbar-docs-link',
+        },
+        {
           href: 'https://github.com/anthropics/claude-code',
           label: 'GitHub',
           position: 'right',
