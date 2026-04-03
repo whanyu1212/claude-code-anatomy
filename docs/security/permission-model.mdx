@@ -4,6 +4,7 @@ title: Permission Model
 ---
 
 import { FlowDiagram, Node, Conn, Arrow, Branches, ArchDiagram, ArchLayer, ArchBox, ArchDivider } from '@site/src/components/Diagrams';
+import { PermissionDialogDemo } from '@site/src/components/TerminalMockup';
 
 # Permission Model
 
@@ -147,15 +148,11 @@ In `auto` mode, the Bash tool has an additional safety layer — a classifier th
 
 When permission mode requires approval, the REPL shows an interactive dialog:
 
-```
-╭─────────────────────────────────────────╮
-│ Claude wants to run:                     │
-│                                          │
-│   Bash: rm -rf dist/                     │
-│                                          │
-│ [y] Allow  [n] Deny  [a] Always allow   │
-╰─────────────────────────────────────────╯
-```
+:::note Illustration
+This mockup is a stylized explainer for the approval flow, not a pixel-accurate reproduction of the current Claude Code CLI UI.
+:::
+
+<PermissionDialogDemo />
 
 Options:
 - **Allow** — permit this one time
