@@ -50,7 +50,6 @@ const config: Config = {
     },
     navbar: {
       title: 'Claude Code Anatomy',
-      style: 'dark',
       items: [
         {
           type: 'docSidebar',
