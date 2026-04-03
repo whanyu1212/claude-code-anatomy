@@ -222,7 +222,7 @@ class RunState:
     _current_step: NextStepInterruption | None
 ```
 
-**Typed dataclass** serializable to/from JSON. Multiple session backends: `SQLiteSession`, `RedisSession`, `DaprSession`, `OpenAIConversationsSession` (server-managed threads). Interruption points frozen in `RunState` for deterministic resume.
+**Typed dataclass** serializable to/from JSON. Multiple session backends: `SQLiteSession`, `OpenAIConversationsSession` (server-managed threads), plus optional extension backends such as `RedisSession` and `DaprSession`. Interruption points frozen in `RunState` for deterministic resume.
 
 </TabItem>
 <TabItem value="langgraph" label="LangChain / LangGraph">

@@ -50,7 +50,7 @@ Source: `src/constants/prompts.ts`
 
 ### 2. Tool Definitions
 
-For each of the 44 tools, the model receives a name, description, and JSON Schema.
+For each enabled tool, the model receives a name, description, and JSON Schema.
 
 <details>
 <summary>Example: Bash tool schema</summary>
@@ -74,7 +74,7 @@ For each of the 44 tools, the model receives a name, description, and JSON Schem
 
 </details>
 
-See [Tool Definitions](/appendix/tool-definitions) in the Appendix for all 44 schemas.
+See [Tool Definitions](/appendix/tool-definitions) in the Appendix for the source-backed tool reference.
 
 ### 3. Permission Context
 
@@ -237,6 +237,30 @@ During a conversation, transient state is tracked in memory:
 
 Session memory is lost when the conversation ends, unless explicitly saved to auto-memory.
 
+## Session Memory Sidecar vs Durable Memory
+
+The source splits "memory" into at least three different mechanisms:
+
+| Mechanism | Scope | How It Works |
+|-----------|-------|--------------|
+| Session transcript state | Current conversation only | In-memory messages, tool results, tasks, and compaction summaries |
+| Session memory file | Current conversation only | A background forked agent periodically refreshes a markdown sidecar file after token and tool-call thresholds are met |
+| Durable auto-memory | Across future sessions | `extractMemories` runs at the end of a completed loop and writes reusable memory files under the auto-memory directory |
+
+The important distinction is that session memory is a rolling sidecar for the current chat, while extracted memories are durable files that can be injected into later prompt assembly.
+
+## Cross-Environment and Shared Memory Services
+
+Several services change which settings and memory files exist on disk before prompt assembly runs:
+
+| Service | Scope | Source-Backed Behavior |
+|---------|-------|------------------------|
+| Settings Sync | Per user across environments | Interactive CLI uploads changed settings and memory entries; CCR downloads them before plugin setup |
+| Remote Managed Settings | Enterprise / managed accounts | Eligible users get remote settings loading, checksum validation, and background polling |
+| Team Memory Sync | Per repo across org members | Pull overwrites local files, push uploads deltas, and deletions do not propagate |
+
+These are not separate prompt layers. They are upstream file and settings services that change what the later prompt-assembly layers read.
+
 ## Context Window & Compaction
 
 Every model has a fixed context window (e.g., 200K tokens). The system prompt alone consumes ~5%. As conversation grows, the engine must keep everything within budget:
@@ -262,16 +286,16 @@ Claude Code's 7-layer dynamic assembly is unusually comprehensive:
 |-----------|----------|:-:|:-:|:-:|
 | **Claude Code** | 7-layer dynamic | Auto | File-based (CLAUDE.md) | Plugins + Skills |
 | **Google ADK** | 4-layer | Manual | Template variables | GlobalInstructionPlugin |
-| **OpenAI Agents** | String or callable | Manual | None built-in | None |
+| **OpenAI Agents** | String, callable, or prompt object | Manual | Prompt/context objects | Prompt objects + dynamic prompt functions |
 | **LangChain** | Middleware composition | Manual | Via middleware | Middleware stacking |
 | **LangGraph** | String or callable | Manual | None built-in | Pre/post hooks |
 
 <details>
 <summary>What each framework does differently</summary>
 
-**Google ADK** is the closest — 4 instruction layers (global, static, dynamic, state injection). But no auto tool injection or file discovery.
+**Google ADK** is the closest — global instructions plus static and dynamic agent instructions, with template/state substitution during assembly. But no auto tool injection or file discovery.
 
-**OpenAI Agents SDK** — instructions are a string or async callable. No layers, no auto-injection.
+**OpenAI Agents SDK** — instructions can be a string/callable, and agents can also use prompt objects or dynamic prompt functions. Still much flatter than Claude Code's layered assembly, with no auto-injection.
 
 **LangChain** — middleware approach via `wrap_model_call`. Flexible but nothing built-in.
 
@@ -295,6 +319,34 @@ from claude_agent_sdk import query
 async for message in query(prompt="Fix the bug"):
     print(message)
 ```
+
+## Magic Docs
+
+Magic Docs is a narrow background maintenance system for markdown files that opt in with a `# MAGIC DOC:` header.
+
+<FlowDiagram>
+  <Node icon="📄" variant="primary">User or agent reads a markdown file</Node>
+  <Conn />
+  <Node icon="🏷️">Detect `# MAGIC DOC:` header + optional italic instructions</Node>
+  <Conn />
+  <Node icon="📌">Register file as a tracked Magic Doc</Node>
+  <Conn />
+  <Node icon="🔁">Post-sampling hook runs after later turns</Node>
+  <Conn />
+  <Node icon="🤖" variant="highlight">Forked update agent edits only that doc</Node>
+</FlowDiagram>
+
+The implementation in `src/services/MagicDocs/magicDocs.ts` is intentionally narrow:
+
+| Behavior | Source-Backed Detail |
+|----------|----------------------|
+| Opt-in format | The first line must match `# MAGIC DOC: ...`; the next line may contain italicized instructions |
+| Registration | The file is tracked only after it has been read during the session |
+| Update agent | Uses a dedicated `magic-docs` agent definition with model `sonnet` |
+| Tool permissions | The forked agent is restricted to `Edit`, and only for that exact markdown path |
+| Untracking | If the doc is deleted, unreadable, or the header is removed, it is dropped from tracking |
+
+Magic Docs sits closer to memory maintenance than to normal editing. It is a post-sampling background hook that tries to keep long-lived project notes current as the conversation uncovers new information.
 
 ## Dream (Memory Consolidation)
 
@@ -390,6 +442,11 @@ Dream creates a `DreamTask` (task type `dream`) that appears in the background t
 | `src/constants/prompts.ts` | Base system prompt templates |
 | `src/utils/claude-md/` | CLAUDE.md loading and merging |
 | `src/memdir/` | Memory directory management |
+| `src/services/SessionMemory/` | Session-memory sidecar file generation |
+| `src/services/extractMemories/` | Durable memory extraction at end of completed turns |
+| `src/services/teamMemorySync/` | Shared repo-level memory synchronization |
+| `src/services/settingsSync/` | Cross-environment settings and memory sync |
+| `src/services/MagicDocs/` | Background maintenance for `# MAGIC DOC:` markdown files |
 | `src/services/compact/` | Compaction algorithms |
 | `src/services/autoDream/` | Dream/auto-consolidation system |
 | `src/tasks/DreamTask/` | Dream task tracking |

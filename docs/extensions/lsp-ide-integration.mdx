@@ -1,0 +1,82 @@
+---
+title: LSP & IDE Integration
+---
+
+import { FlowDiagram, Node, Conn, Branches, Group } from '@site/src/components/Diagrams';
+
+# LSP & IDE Integration
+
+Claude Code has a dedicated LSP subsystem for code intelligence. It is separate from MCP, separate from slash commands, and only becomes active when compatible plugin-provided language servers are available.
+
+## Startup Model
+
+<FlowDiagram>
+  <Node icon="🔌" variant="primary">Enabled plugins</Node>
+  <Conn />
+  <Node icon="📦">Load plugin LSP server configs</Node>
+  <Conn />
+  <Node icon="⚙️" variant="highlight">LSP manager singleton</Node>
+  <Conn />
+  <Branches cols={2}>
+    <Node variant="subtle">Lazy-start language servers on demand</Node>
+    <Node variant="subtle">Register passive diagnostics handlers</Node>
+  </Branches>
+</FlowDiagram>
+
+`initializeLspServerManager()` is intentionally asynchronous and non-blocking. Startup creates the manager, kicks off initialization in the background, and allows the rest of the CLI to continue.
+
+## LSP Servers Come From Plugins
+
+The source is explicit here: LSP servers are loaded from plugins, not from user or project settings.
+
+| Source | Supported? |
+|--------|------------|
+| Plugin manifests / plugin LSP integration | Yes |
+| User settings | No |
+| Project settings | No |
+
+This makes LSP part of the plugin extension surface rather than a standalone config subsystem.
+
+## What the LSP Tool Actually Does
+
+`LSPTool` is a read-only built-in tool for code intelligence operations such as go-to-definition, references, hover, symbols, and call hierarchy:
+
+| Behavior | Source-Backed Detail |
+|----------|----------------------|
+| Availability | Enabled only when at least one LSP server is connected and healthy |
+| Safety | Read-only and concurrency-safe |
+| Validation | Confirms the path exists and is a regular file before use |
+| Startup coordination | Waits for manager initialization if startup is still pending |
+| Execution | Opens the file in the LSP server before issuing requests |
+
+The tool is also marked as deferred, which matches its "specialized but optional" role in the tool system.
+
+## Passive Diagnostics
+
+The LSP manager does more than answer direct tool calls. After successful initialization it registers passive notification handlers for diagnostics:
+
+<FlowDiagram>
+  <Node icon="🧠" variant="primary">Language server</Node>
+  <Conn />
+  <Node icon="📣">publishDiagnostics notifications</Node>
+  <Conn />
+  <Node icon="🧰">passiveFeedback handlers</Node>
+  <Conn />
+  <Node icon="🖥️">Claude Code UI / feedback surfaces</Node>
+</FlowDiagram>
+
+This is why the LSP subsystem belongs in the runtime architecture, not just in the tool appendix.
+
+## Plugin Refresh Matters
+
+`reinitializeLspServerManager()` exists because plugin loading can change after startup. When plugins are refreshed, Claude Code can rebuild the LSP server set instead of being stuck with the startup snapshot.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/lsp/manager.ts` | LSP manager lifecycle, status, reinit, and cleanup |
+| `src/services/lsp/LSPServerManager.ts` | Multi-server orchestration and request routing |
+| `src/services/lsp/config.ts` | Loads LSP server configs from plugins only |
+| `src/services/lsp/passiveFeedback.ts` | Passive diagnostic notification handling |
+| `src/tools/LSPTool/LSPTool.ts` | Read-only LSP tool implementation |

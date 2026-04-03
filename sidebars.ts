@@ -41,6 +41,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'extensions/command-system',
         'extensions/mcp-integration',
+        'extensions/lsp-ide-integration',
         'extensions/plugins-skills',
         'extensions/hooks',
       ],
@@ -58,8 +59,11 @@ const sidebars: SidebarsConfig = {
       label: 'Runtime & Infrastructure',
       items: [
         'core/startup-bootstrap',
+        'core/headless-query-engine-sdk-protocol',
         'core/input-rendering',
+        'runtime/prompt-suggestions-speculation',
         'core/api-client',
+        'runtime/remote-sessions-teleport-remote-control',
         'ui/components-rendering',
         'observability/analytics-telemetry',
       ],
@@ -70,6 +74,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'appendix/feature-flags',
         'appendix/tool-definitions',
+        'appendix/command-catalog',
         'appendix/directory-map',
         'appendix/glossary',
       ],

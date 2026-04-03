@@ -5,7 +5,7 @@ title: Tool Definitions
 
 # Tool Definitions
 
-Complete input schemas for all built-in tools (44 tool directories, ~38 active implementations), extracted from the source at `src/tools/`.
+Source-backed input schemas and notes for Claude Code's built-in, conditional, and runtime-generated tools. The base registry lives in `src/tools.ts`; this appendix also tracks MCP wrappers, SDK-only synthetic tools, and source-only gated entries that do not belong in the main catalog.
 
 ## File Operations
 
@@ -288,6 +288,15 @@ Source: `src/tools/LSPTool/`
 ## MCP Tools
 
 <details>
+<summary><strong>MCPTool</strong> — Runtime wrapper for a connected MCP server tool</summary>
+
+Dynamic input schema — each connected MCP server contributes its own schema and the tool is named `mcp__<server>__<tool>`.
+
+Source: `src/tools/MCPTool/`, wrapped from `src/services/mcp/client.ts`
+
+</details>
+
+<details>
 <summary><strong>ListMcpResources</strong> — List resources from connected MCP servers</summary>
 
 | Parameter | Type | Required | Description |
@@ -517,12 +526,23 @@ Source: `src/tools/SleepTool/`
 
 ## Stubs & Feature-Gated
 
-These tools exist in the source but are stubs or gated behind internal feature flags in the public build:
+These tools are referenced by the source registry, or present as stubs, but are not part of the stable/common catalog:
 
-| Tool | Status | Notes |
-|------|--------|-------|
-| `BriefTool` (SendUserMessage) | Gated behind `KAIROS` | Proactive message sending |
-| `REPLTool` | Gated behind `REPL_MODE` | Interactive code execution |
-| `TungstenTool` | Stub | Internal feature |
-| `SuggestBackgroundPRTool` | Stub | Not implemented |
-| `WorkflowTool` | Gated behind `WORKFLOW_SCRIPTS` | Workflow file execution |
+| Tool | Registry / Status | Recovered Source | Notes |
+|------|-------------------|------------------|-------|
+| `BriefTool` / `SendUserMessage` | `feature('KAIROS')` or `feature('KAIROS_BRIEF')` | Yes | Message-to-user tool; prompt source says "Send a message to the user" |
+| `REPLTool` | `process.env.USER_TYPE === 'ant'` | Partial stub | Present as `src/tools/REPLTool/REPLTool.ts`, but recovered implementation is only a stub shell |
+| `WorkflowTool` | `feature('WORKFLOW_SCRIPTS')` | Partial stub | Registry and constants are present, but `WorkflowTool.js` was not recovered in this source tree |
+| `SuggestBackgroundPRTool` | `process.env.USER_TYPE === 'ant'` | Stub | Recovered file is an empty class |
+| `TungstenTool` | `process.env.USER_TYPE === 'ant'` | Stub | Recovered file explicitly says the real tool is not in the source map |
+| `TestingPermissionTool` / `TestingPermission` | `process.env.NODE_ENV === 'test'` | Yes | Testing-only tool that always asks for permission |
+| `WebBrowserTool` | `feature('WEB_BROWSER_TOOL')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `MonitorTool` | `feature('MONITOR_TOOL')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `SendUserFileTool` | `feature('KAIROS')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `PushNotificationTool` | `feature('KAIROS')` or `feature('KAIROS_PUSH_NOTIFICATION')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `SubscribePRTool` | `feature('KAIROS_GITHUB_WEBHOOKS')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `SnipTool` | `feature('HISTORY_SNIP')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `ListPeersTool` | `feature('UDS_INBOX')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `CtxInspectTool` | `feature('CONTEXT_COLLAPSE')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `TerminalCaptureTool` | `feature('TERMINAL_PANEL')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |
+| `OverflowTestTool` | `feature('OVERFLOW_TEST_TOOL')` | No | Referenced from `src/tools.ts`, but no implementation directory was recovered |

@@ -2,7 +2,10 @@ import React, { useState, useMemo } from 'react';
 import s from './ToolCatalog.module.css';
 
 /* ================================================================
-   Data — canonical names and schemas aligned with tool-definitions appendix
+   Data — stable/common built-in tools surfaced in the main docs.
+   Source of truth for the base registry is claude-code-source/src/tools.ts
+   (getAllBaseTools). Dynamic MCP wrappers and SDK-only synthetic tools are
+   documented in the appendix instead of this catalog.
    ================================================================ */
 
 type Badge = 'read-only' | 'concurrent' | 'approval' | 'destructive' | 'internal';
@@ -54,18 +57,16 @@ const TOOLS: ToolDef[] = [
   { name: 'EnterWorktree', impl: 'EnterWorktreeTool', desc: 'Creates an isolated git worktree for safe experimentation.', badges: ['internal'], input: 'name?', source: 'src/tools/EnterWorktreeTool/', category: 'Planning' },
   { name: 'ExitWorktree', impl: 'ExitWorktreeTool', desc: 'Exits a worktree session (keep or remove).', badges: ['internal'], input: 'action, discard_changes?', source: 'src/tools/ExitWorktreeTool/', category: 'Planning' },
 
-  // MCP
-  { name: 'MCPTool', impl: 'MCPTool', desc: 'Generic wrapper for any MCP server tool. Named mcp__{server}__{tool}.', badges: ['internal'], input: '(varies by server)', features: 'Dynamically generated per MCP server', source: 'src/tools/MCPTool/', category: 'MCP' },
+  // MCP resource access tools are part of the base registry.
+  // Dynamic MCP wrappers are created at runtime in src/services/mcp/client.ts.
   { name: 'ListMcpResources', impl: 'ListMcpResourcesTool', desc: 'Lists resources available from connected MCP servers.', badges: ['read-only', 'concurrent', 'internal'], input: 'server?', source: 'src/tools/ListMcpResourcesTool/', category: 'MCP' },
   { name: 'ReadMcpResource', impl: 'ReadMcpResourceTool', desc: 'Reads a specific MCP resource by URI.', badges: ['read-only', 'internal'], input: 'server, uri', source: 'src/tools/ReadMcpResourceTool/', category: 'MCP' },
-  { name: 'McpAuth', impl: 'McpAuthTool', desc: 'Authenticates an MCP server via OAuth flow.', badges: ['internal'], input: '(none, dynamically named)', source: 'src/tools/McpAuthTool/', category: 'MCP' },
 
   // Extensions & Infrastructure
   { name: 'Skill', impl: 'SkillTool', desc: 'Executes a loaded skill (prompt template).', badges: ['internal'], input: 'skill, args?', source: 'src/tools/SkillTool/', category: 'Infra' },
   { name: 'ToolSearch', impl: 'ToolSearchTool', desc: 'Searches for deferred tools by keyword, returns full schemas.', badges: ['read-only', 'internal'], input: 'query, max_results?', source: 'src/tools/ToolSearchTool/', category: 'Infra' },
   { name: 'AskUserQuestion', impl: 'AskUserQuestionTool', desc: 'Asks the user multiple choice questions.', badges: ['internal'], input: 'questions (1-4 question objects)', source: 'src/tools/AskUserQuestionTool/', category: 'Infra' },
   { name: 'Config', impl: 'ConfigTool', desc: 'Gets or sets Claude Code configuration.', badges: ['internal'], input: 'setting, value?', source: 'src/tools/ConfigTool/', category: 'Infra' },
-  { name: 'StructuredOutput', impl: 'SyntheticOutputTool', desc: 'Returns response as structured JSON validated against a schema.', badges: ['internal'], input: '(dynamic schema)', source: 'src/tools/SyntheticOutputTool/', category: 'Infra' },
   { name: 'Sleep', impl: 'SleepTool', desc: 'Waits for a specified duration. Used for polling patterns.', badges: ['internal'], input: 'duration (ms)', source: 'src/tools/SleepTool/', category: 'Infra' },
   { name: 'LSP', impl: 'LspTool', desc: 'Language Server Protocol operations for code intelligence.', badges: ['read-only', 'internal'], input: 'operation, filePath, line, character', source: 'src/tools/LSPTool/', category: 'Infra' },
 

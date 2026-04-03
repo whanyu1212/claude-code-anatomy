@@ -162,6 +162,34 @@ Commands are organized by function:
 | **Navigation** | `/help`, `/commands` | Local |
 | **Task** | `/tasks`, `/background` | Local/JSX |
 
+That table is only the architectural overview. The real registry in `src/commands.ts` is broader and also merges bundled skills, user skill-directory commands, plugin commands, workflow-generated commands, and dynamic skills discovered during execution.
+
+See the [Command Catalog](/appendix/command-catalog) appendix for the categorized source-backed map.
+
+## Workflow-Generated Commands
+
+When the `WORKFLOW_SCRIPTS` feature is enabled, the command registry also merges **workflow-generated commands**:
+
+```typescript title="src/commands.ts (simplified)"
+const workflowCommands = feature('WORKFLOW_SCRIPTS')
+  ? await getWorkflowCommands(cwd)
+  : []
+
+return [...baseCommands, ...workflowCommands]
+```
+
+The recovered source proves two architectural points:
+
+| What Exists | Evidence |
+|-------------|----------|
+| Workflow commands are generated dynamically | `src/commands.ts` loads `getWorkflowCommands(cwd)` instead of hardcoding names |
+| They are tagged as a distinct command kind | `formatDescriptionWithSource(cmd)` appends `(workflow)` when `cmd.kind === 'workflow'` |
+| There is also a top-level workflow command surface | `src/commands.ts` conditionally loads `./commands/workflows/index.js` |
+
+:::note Recovered surface
+The recovered source tree does not include the full workflow-command implementation, so this page only documents the registry integration that is directly visible in `src/commands.ts` and `src/tools/WorkflowTool/`.
+:::
+
 ## Execution Flow
 
 <FlowDiagram>
@@ -217,4 +245,6 @@ Commands are organized by function:
 |------|---------|
 | `src/commands.ts` | Command registry and loaders |
 | `src/types/command.ts` | Command type definitions |
+| `src/skills/` | Bundled skill commands added to the registry |
+| `src/tools/WorkflowTool/` | Workflow-generated command support when enabled |
 | `src/commands/` | 60+ command implementations (207 files) |

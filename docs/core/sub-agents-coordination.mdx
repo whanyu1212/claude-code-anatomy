@@ -269,6 +269,41 @@ The coordinator gets a specialized system prompt instructing it to delegate rath
 | Worker → Coordinator | Task completion notifications (`<task-notification>`) |
 | Coordinator → Running Worker | `SendMessage` for follow-up instructions |
 
+### Agent Progress Summaries
+
+Coordinator mode also has a lightweight **progress summarization** layer for workers:
+
+<FlowDiagram>
+  <Node icon="🤖" variant="highlight">Running worker transcript</Node>
+  <Conn />
+  <Node icon="⏰">~30s timer</Node>
+  <Conn />
+  <Node icon="🪞">Fork transcript into summary agent</Node>
+  <Conn />
+  <Node icon="📝" variant="primary">Generate 1-2 sentence progress summary</Node>
+  <Conn />
+  <Node icon="📤">Store on AgentProgress for UI display</Node>
+</FlowDiagram>
+
+This is not another autonomous worker. `src/services/AgentSummary/agentSummary.ts` forks the existing sub-agent conversation, strips incomplete tool calls, denies all tool use, and asks for a short present-tense summary naming the file or function being worked on.
+
+The result is written back onto the worker's progress state so coordinator-mode UIs can show a live status line without waiting for task completion.
+
+## How Other Frameworks Compare
+
+Most frameworks expose some notion of delegation, but Claude Code pushes further into **runtime coordination**: background workers, follow-up messages, task notifications, and permission routing are all part of the same harness.
+
+| Concern | Claude Code | Google ADK | OpenAI Agents | LangGraph |
+|---------|-------------|------------|---------------|-----------|
+| **Delegation primitive** | `Agent` tool spawns a child loop | `sub_agents` tree + `transfer_to_agent` | `handoffs` or `as_tool()` | Graph nodes / subgraphs |
+| **Control flow shape** | Call/return by default, optional background task | Transfer within an agent tree | Handoff transfers control; `as_tool()` nests a run and returns | Determined by graph topology |
+| **Nested approval handling** | Coordinator or leader can relay approvals | Tool-level confirmation | Nested `ToolApprovalItem` interruptions from agent-tool runs | Interrupt/checkpoint and caller resume |
+| **Coordination emphasis** | Runtime worker orchestration | Agent hierarchy | Runner-level delegation primitives | Explicit state graph design |
+
+:::info Key difference
+Claude Code's distinctive part is not just that it has sub-agents. It couples delegation with task persistence, follow-up messaging, progress summaries, and approval routing, so the harness behaves more like a managed worker runtime than a bare handoff primitive.
+:::
+
 ## Swarm Mode (Agent Teams)
 
 While coordinator mode uses background agents, swarm mode creates **teams of in-process agents** that can see each other in the terminal and communicate via a shared mailbox.
@@ -397,6 +432,7 @@ registerLeaderToolUseConfirmQueue(setter)
 |------|---------|
 | `src/tools/AgentTool/` | Agent tool implementation |
 | `src/tools/SendMessageTool/` | Agent communication |
+| `src/services/AgentSummary/agentSummary.ts` | Periodic progress summaries for coordinator workers |
 | `src/buddy/` | Sub-agent system (6 files) |
 | `src/coordinator/coordinatorMode.ts` | Coordinator logic |
 | `src/utils/swarm/` | Swarm system (15+ files) |

@@ -1,0 +1,33 @@
+---
+title: Command Catalog
+---
+
+import CommandCatalog from '@site/src/components/CommandCatalog';
+
+# Command Catalog
+
+This is a categorized map of the major built-in command families wired through `src/commands.ts`. It is intentionally organizational rather than exhaustive line-by-line command documentation, because the full surface also includes dynamic skills, plugin commands, and workflow-generated commands.
+
+<CommandCatalog />
+
+## How the Registry Is Assembled
+
+`getCommands()` merges several sources:
+
+1. Built-in commands from `src/commands.ts`
+2. Bundled skills
+3. User skill-directory commands
+4. Plugin commands and plugin skills
+5. Workflow-generated commands when workflow scripts are enabled
+6. Dynamic skills discovered during file operations
+
+That is why the command surface is broader than the examples on the main Command System page.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/commands.ts` | Built-in command registry and merge order |
+| `src/types/command.ts` | Command type system (`prompt`, `local`, `local-jsx`) |
+| `src/commands/` | Built-in command implementations |
+| `src/tools/WorkflowTool/` | Workflow-generated command support when enabled |

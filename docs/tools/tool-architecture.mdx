@@ -210,7 +210,8 @@ my_tool = build_tool(
 | **Agent** | `Agent`, `SendMessage` | Spawns sub-processes |
 | **Task** | `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`, `TaskOutput`, `TaskStop` | Manages background work |
 | **Planning** | `EnterPlanMode`, `ExitPlanMode` | Mode switches |
-| **MCP** | `MCPTool`, `ReadMcpResource`, `ListMcpResources` | Depends on MCP server |
+| **MCP Access** | `ReadMcpResource`, `ListMcpResources` | Read-only access to MCP resources |
+| **MCP Wrappers** | `MCPTool`, `McpAuth` | Runtime-generated wrappers around connected MCP servers |
 | **Infrastructure** | `SkillTool`, `ToolSearch`, `Sleep` | Internal |
 
 ## Tool Registration

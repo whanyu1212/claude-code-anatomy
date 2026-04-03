@@ -18,6 +18,9 @@ src/
 ├── QueryEngine.ts     → Headless query execution
 ├── query.ts           → Main query loop
 ├── commands.ts        → Command registry
+├── bridge/            → Remote-control bridge runtime
+├── remote/            → Remote session transports
+├── server/            → Direct-connect session plumbing
 └── [directories below]
 ```
 
@@ -27,7 +30,7 @@ src/
 
 | Directory | Files | Purpose | Docs |
 |-----------|-------|---------|------|
-| `entrypoints/` | 8 | CLI bootstrap, SDK types | [Startup & Bootstrap](../core/startup-bootstrap) |
+| `entrypoints/` | 8 | CLI bootstrap, SDK entrypoints, MCP server entrypoint | [Startup & Bootstrap](../core/startup-bootstrap) |
 | `state/` | 6 | Zustand-like state store | [State & Sessions](../core/state-sessions) |
 | `context/` | 9 | React context providers | [State & Sessions](../core/state-sessions) |
 | `constants/` | 21 | Global constants, prompts | [Prompt, Memory & Context](../core/prompt-memory-context) |
@@ -36,8 +39,8 @@ src/
 
 | Directory | Files | Purpose | Docs |
 |-----------|-------|---------|------|
-| `tools/` | 184 | 45+ built-in tool implementations | [Tool Architecture](../tools/tool-architecture) |
-| `commands/` | 207 | 100+ slash command implementations | [Command System](../extensions/command-system) |
+| `tools/` | 184 | Built-in tool implementations and gated tool stubs | [Tool Architecture](../tools/tool-architecture) |
+| `commands/` | 207 | Slash command implementations | [Command System](../extensions/command-system) |
 
 ### Services
 
@@ -46,7 +49,13 @@ src/
 | `services/api/` | 20+ | API client, auth, providers | [API Client](../core/api-client) |
 | `services/mcp/` | 10+ | MCP client and configuration | [MCP Integration](../extensions/mcp-integration) |
 | `services/tools/` | 10+ | Tool execution infrastructure | [Tool Execution](../tools/tool-execution) |
+| `services/lsp/` | 5+ | LSP manager, plugin config, diagnostics pipeline | [LSP & IDE Integration](../extensions/lsp-ide-integration) |
 | `services/compact/` | 5+ | Message compaction | [Prompt, Memory & Context](../core/prompt-memory-context) |
+| `services/SessionMemory/` | 5+ | Session-memory sidecar generation | [Prompt, Memory & Context](../core/prompt-memory-context) |
+| `services/extractMemories/` | 3+ | Durable memory extraction | [Prompt, Memory & Context](../core/prompt-memory-context) |
+| `services/settingsSync/` | 3+ | Cross-environment settings and memory sync | [Prompt, Memory & Context](../core/prompt-memory-context) |
+| `services/remoteManagedSettings/` | 5+ | Enterprise managed settings fetch/polling | [Startup & Bootstrap](../core/startup-bootstrap) |
+| `services/teamMemorySync/` | 5+ | Repo-scoped shared team memory sync | [Prompt, Memory & Context](../core/prompt-memory-context) |
 | `services/analytics/` | 10+ | GrowthBook, telemetry | [Analytics](../observability/analytics-telemetry) |
 | `services/plugins/` | 5+ | Plugin management | [Plugins & Skills](../extensions/plugins-skills) |
 | `services/policyLimits/` | 3+ | Enterprise policy enforcement | [Sandbox & Safety](../security/sandbox-safety) |
@@ -94,9 +103,10 @@ src/
 | `types/` | 11 | TypeScript type definitions |
 | `memdir/` | 8 | Memory directory management |
 | `migrations/` | 11 | Data migration scripts |
-| `bridge/` | 31 | IDE bridge integration (disabled) |
+| `bridge/` | 31 | Remote-control / bridge runtime | [Remote Sessions, Teleport & Remote Control](../runtime/remote-sessions-teleport-remote-control) |
 | `cli/` | 19 | CLI argument parsing and transports |
-| `remote/` | 4 | Remote execution |
+| `remote/` | 4 | Remote session transport managers | [Remote Sessions, Teleport & Remote Control](../runtime/remote-sessions-teleport-remote-control) |
+| `server/` | 5+ | Direct-connect session server helpers | [Remote Sessions, Teleport & Remote Control](../runtime/remote-sessions-teleport-remote-control) |
 | `vim/` | 5 | Vim mode support |
 | `voice/` | 1 | Voice input (disabled) |
 | `native-ts/` | 3+ | Native module TypeScript wrappers |
