@@ -209,6 +209,38 @@ nav.menu {
 
 /* Mobile sidebar — ensure proper scrolling */
 @media (max-width: 996px) {
+  .navbar {
+    /* Keep the mobile drawer fixed to the viewport instead of the blurred navbar box. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .navbar-sidebar,
+  .navbar-sidebar__backdrop {
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .navbar-sidebar__backdrop {
+    right: 0;
+    bottom: auto;
+    width: 100vw;
+  }
+
+  .navbar-sidebar {
+    bottom: auto;
+    max-height: 100vh;
+    max-height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navbar-sidebar__items {
+    height: calc(100vh - var(--ifm-navbar-height));
+    height: calc(100dvh - var(--ifm-navbar-height));
+  }
+
   .navbar-sidebar .menu {
     padding-bottom: 3rem;
   }
