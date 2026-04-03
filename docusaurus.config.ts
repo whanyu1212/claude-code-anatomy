@@ -59,7 +59,7 @@ const config: Config = {
           className: 'navbar-docs-link',
         },
         {
-          href: 'https://github.com/anthropics/claude-code',
+          href: 'https://github.com/whanyu1212/claude-code-anatomy',
           label: 'GitHub',
           position: 'right',
         },
