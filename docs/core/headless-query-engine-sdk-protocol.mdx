@@ -1,0 +1,115 @@
+---
+title: Headless Query Engine & SDK Protocol
+---
+
+import { FlowDiagram, Node, Conn, Branches, Group } from '@site/src/components/Diagrams';
+
+# Headless Query Engine & SDK Protocol
+
+The REPL is only one runtime for Claude Code. The same core loop can also run headlessly through `QueryEngine`, stream structured SDK messages, and expose tools over an MCP server entrypoint.
+
+## The Headless Path
+
+<FlowDiagram>
+  <Node icon="🧑‍💻" variant="primary">SDK host / headless caller</Node>
+  <Conn />
+  <Node icon="📨">Structured stdin or in-process API</Node>
+  <Conn />
+  <Node icon="⚙️" variant="highlight">QueryEngine.submitMessage()</Node>
+  <Conn />
+  <Group label="Shared Core">
+    <Node icon="🧠">Prompt assembly</Node>
+    <Conn size="short" />
+    <Node icon="🔧">Tool execution</Node>
+    <Conn size="short" />
+    <Node icon="📡">Streaming model responses</Node>
+  </Group>
+  <Conn />
+  <Node icon="📤">SDKMessage stream</Node>
+</FlowDiagram>
+
+## What QueryEngine Owns
+
+`QueryEngine` is not just a helper around `query.ts`. It owns the conversation lifecycle for headless and SDK-style sessions:
+
+| Responsibility | What Persists Across Turns |
+|----------------|----------------------------|
+| Conversation state | Mutable messages for the session |
+| Usage accounting | Total usage and API duration tracking |
+| Tool context | Read-file cache, permission denials, orphaned permission handling |
+| Context assembly | Memory prompt loading, plugin cache loading, system prompt parts |
+| Session behavior | Model selection, thinking config, max turns, budgets, replay behavior |
+
+One `QueryEngine` instance corresponds to one conversation. Each `submitMessage()` call starts another turn inside that same session.
+
+## The SDK Transport Is a Control Protocol
+
+When Claude Code runs headlessly over stdio, it does not exchange plain terminal text. `StructuredIO` reads and writes newline-delimited JSON messages and carries both conversation events and control messages:
+
+| Message Type | Purpose |
+|--------------|---------|
+| `initialize` | Bootstraps commands, agents, models, hooks, MCP servers, and output styles |
+| `can_use_tool` | Forwards permission requests to the SDK host |
+| `interrupt` | Cancels the current turn |
+| `set_permission_mode` | Changes how permission checks are handled |
+| `set_model` / `set_max_thinking_tokens` | Adjusts runtime behavior mid-session |
+| `mcp_status` / `get_context_usage` | Fetches live runtime metadata from the CLI |
+
+This is the protocol layer that remote sessions, direct-connect flows, and SDK hosts all build on top of.
+
+## Public SDK Surface vs Runtime Implementation
+
+`src/entrypoints/agentSdkTypes.ts` exports the typed public SDK surface, but it is intentionally a facade. The actual runtime behavior lives deeper in the CLI:
+
+| Layer | Role |
+|-------|------|
+| `src/entrypoints/agentSdkTypes.ts` | Public types and placeholder SDK entrypoints |
+| `src/entrypoints/sdk/controlSchemas.ts` | Zod schemas for the control protocol |
+| `src/cli/structuredIO.ts` | NDJSON transport, permission forwarding, session state notifications |
+| `src/QueryEngine.ts` | Persistent conversation engine for headless sessions |
+| `src/query.ts` | Shared prompt assembly, streaming, tool loop, and message normalization |
+
+## Claude Code as an MCP Server
+
+Claude Code also exposes its built-in tools through `src/entrypoints/mcp.ts`:
+
+<FlowDiagram>
+  <Node icon="🧩" variant="primary">External MCP client</Node>
+  <Conn />
+  <Node icon="🖧">stdio transport</Node>
+  <Conn />
+  <Node icon="🔌">Claude Code MCP server</Node>
+  <Conn />
+  <Branches cols={2}>
+    <Node variant="subtle">List tools from the built-in registry</Node>
+    <Node variant="subtle">Call tools through the normal permission + validation path</Node>
+  </Branches>
+</FlowDiagram>
+
+The MCP entrypoint reuses the same built-in tool registry, validation, and permission checks. It is not a separate tool implementation stack.
+
+## How Other Frameworks Compare
+
+Claude Code's headless path is unusual because it combines a **persistent conversation engine** with a **bidirectional control protocol**. The other frameworks expose similar execution primitives, but usually as library APIs first rather than a CLI-native wire protocol.
+
+| Concern | Claude Code | OpenAI Agents | Google ADK | LangChain / LangGraph |
+|---------|-------------|---------------|------------|------------------------|
+| **Conversation owner** | `QueryEngine` instance per session | `Runner` + `RunState` | `Runner` + session service | Compiled graph + optional checkpointer |
+| **Primary streaming shape** | `AsyncGenerator<SDKMessage>` over stdio or in-process | `RunResultStreaming` with background loop task | `runner.run_async()` events or `run_live()` live queue/events | Graph stream/invoke APIs |
+| **Resume model** | Same `QueryEngine` continues turns; SDK host can interrupt mid-session | `RunState.to_json()` / `from_json()` resume serialized runs | Resume via `invocation_id` and persisted session state | Resume from checkpoint/thread state |
+| **Host control channel** | Explicit control messages: `initialize`, `can_use_tool`, `interrupt`, config updates | Python callbacks and state objects; no separate protocol layer in source | Runner API + `RunConfig`; live mode uses a separate request queue | Graph API parameters such as `interrupt_before` |
+
+:::info Key difference
+Claude Code is the most protocol-oriented of the group. OpenAI Agents, ADK, and LangGraph all expose resumable execution, but they primarily hand you library objects and callbacks. Claude Code additionally standardizes the host/runtime conversation as structured messages on the wire.
+:::
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/QueryEngine.ts` | Persistent headless conversation engine |
+| `src/query.ts` | Shared main query loop and prompt assembly |
+| `src/cli/structuredIO.ts` | Structured stdio transport and control-request handling |
+| `src/entrypoints/sdk/controlSchemas.ts` | Zod schemas for the SDK control protocol |
+| `src/entrypoints/agentSdkTypes.ts` | Public SDK types and facade entrypoints |
+| `src/entrypoints/mcp.ts` | MCP server entrypoint for built-in tools |

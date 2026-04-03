@@ -24,7 +24,7 @@ Where do the model's tools come from? Claude Code merges tools from four sources
 
 ## 1. Built-in Tools
 
-The 40+ tools that ship with Claude Code, each in its own directory under `src/tools/`. These implement the full [Tool interface](./tool-architecture) with `buildTool()`:
+The base built-in registry comes from `getAllBaseTools()` in `src/tools.ts`. Most of those tools live under `src/tools/`, and some are conditionally included behind feature flags or environment checks:
 
 - **File operations** — Read, Write, Edit, Glob, Grep, NotebookEdit
 - **Shell** — Bash, PowerShell
@@ -32,13 +32,13 @@ The 40+ tools that ship with Claude Code, each in its own directory under `src/t
 - **Agents** — Agent, SendMessage
 - **Tasks** — TaskCreate, TaskUpdate, TaskList, TaskGet, TaskOutput, TaskStop, TodoWrite
 - **Planning** — EnterPlanMode, ExitPlanMode, EnterWorktree, ExitWorktree
-- **Infrastructure** — Skill, ToolSearch, AskUserQuestion, Config, Sleep, LSP, StructuredOutput
+- **Infrastructure** — Skill, ToolSearch, AskUserQuestion, Config, Sleep, LSP
 
-See the [Built-in Tools catalog](./built-in-tools) for the full interactive list.
+The [Built-in Tools catalog](./built-in-tools) focuses on the stable/common surface. The [Tool Definitions](/appendix/tool-definitions) appendix is where the feature-gated, testing-only, and source-only tools live.
 
 ## 2. MCP Server Tools
 
-[MCP (Model Context Protocol)](/extensions/mcp-integration) servers expose tools that Claude Code wraps as `MCPTool` instances. Each MCP tool becomes a tool the model can call, named `mcp__{server}__{tool}`:
+[MCP (Model Context Protocol)](/extensions/mcp-integration) servers expose tools that Claude Code wraps at runtime. The wrapper implementation lives in `src/tools/MCPTool/`, but those wrappers are not part of `getAllBaseTools()`. Each connected MCP tool becomes a model-visible tool named `mcp__{server}__{tool}`:
 
 ```typescript title="src/tools/MCPTool/MCPTool.ts (simplified)"
 // An MCP server "github" exposes a tool "create_issue"
@@ -62,7 +62,7 @@ MCP tools go through the same permission checks and execution pipeline as built-
 | User | `~/.claude/mcp.json` | Individual user |
 | Enterprise | Managed settings | Organization admins |
 
-MCP servers also expose **resources** (read-only data) accessed via `ListMcpResources` and `ReadMcpResource` tools, and may require **authentication** handled by the `McpAuth` tool.
+MCP servers also expose **resources** (read-only data) accessed via the built-in `ListMcpResources` and `ReadMcpResource` tools, and may require **authentication** handled by the dynamically named `McpAuth` tool.
 
 For full details on server types, configuration, and connection lifecycle, see [MCP Integration](/extensions/mcp-integration).
 
@@ -111,7 +111,7 @@ All sources merge during initialization in `main.tsx`:
 
 ```typescript title="src/main.tsx (simplified)"
 // 1. Load built-in tools
-const builtinTools = loadBuiltinTools()      // 40+ from src/tools/
+const builtinTools = loadBuiltinTools()      // Base registry from src/tools.ts
 
 // 2. Connect MCP servers, wrap their tools
 const mcpTools = await connectMCPServers()   // mcp__{server}__{tool}
@@ -135,7 +135,8 @@ Every tool — regardless of source — goes through the same [execution pipelin
 
 | File | Purpose |
 |------|---------|
-| `src/tools/` | 40+ built-in tool directories |
+| `src/tools.ts` | Base built-in registry and conditional inclusion logic |
+| `src/tools/` | Built-in tool implementations |
 | `src/tools/MCPTool/` | MCP tool wrapper |
 | `src/services/mcp/` | MCP client and configuration |
 | `src/services/plugins/` | Plugin management |

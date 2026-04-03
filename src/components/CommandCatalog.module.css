@@ -1,0 +1,157 @@
+.catalog {
+  margin: 1.5rem 0;
+}
+
+.section {
+  margin: 0 0 2rem;
+}
+
+.sectionHeader {
+  margin-bottom: 0.85rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.sectionDescription {
+  margin: 0;
+  color: #71717a;
+  line-height: 1.55;
+  max-width: 54rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  padding: 1rem 1.1rem;
+  border: 1px solid #1e1e1e;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.05), transparent 38%),
+    #161616;
+  min-height: 170px;
+}
+
+.cardAccent {
+  border-color: rgba(45, 212, 191, 0.28);
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(8, 44, 40, 0.9), #161616 52%);
+}
+
+.cardGated {
+  border-color: rgba(251, 191, 36, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(41, 28, 8, 0.88), #161616 52%);
+}
+
+[data-theme='light'] .card {
+  border-color: #e7e7e7;
+  background:
+    radial-gradient(circle at top right, rgba(13, 148, 136, 0.06), transparent 38%),
+    #ffffff;
+}
+
+[data-theme='light'] .cardAccent {
+  border-color: rgba(13, 148, 136, 0.26);
+  background:
+    radial-gradient(circle at top right, rgba(13, 148, 136, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(240, 253, 250, 1), #ffffff 60%);
+}
+
+[data-theme='light'] .cardGated {
+  border-color: rgba(217, 119, 6, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(217, 119, 6, 0.09), transparent 42%),
+    linear-gradient(180deg, rgba(255, 251, 235, 1), #ffffff 60%);
+}
+
+.cardTitle {
+  margin-bottom: 0.7rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #f4f4f5;
+}
+
+[data-theme='light'] .cardTitle {
+  color: #111111;
+}
+
+.exampleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.85rem;
+}
+
+.exampleChip {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  background: rgba(45, 212, 191, 0.06);
+  color: #d4d4d8;
+  font-size: 0.74rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.cardGated .exampleChip {
+  border-color: rgba(251, 191, 36, 0.24);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+[data-theme='light'] .exampleChip {
+  border-color: rgba(13, 148, 136, 0.18);
+  background: rgba(13, 148, 136, 0.06);
+  color: #1f2937;
+}
+
+[data-theme='light'] .cardGated .exampleChip {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: rgba(217, 119, 6, 0.07);
+}
+
+.sourceLabel {
+  margin-bottom: 0.28rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2dd4bf;
+}
+
+.cardGated .sourceLabel {
+  color: #fbbf24;
+}
+
+[data-theme='light'] .sourceLabel {
+  color: #0f766e;
+}
+
+[data-theme='light'] .cardGated .sourceLabel {
+  color: #b45309;
+}
+
+.sourceText {
+  color: #8f8f97;
+  line-height: 1.55;
+  font-size: 0.82rem;
+}
+
+[data-theme='light'] .sourceText {
+  color: #52525b;
+}

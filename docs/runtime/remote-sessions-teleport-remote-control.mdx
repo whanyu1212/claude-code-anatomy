@@ -1,0 +1,81 @@
+---
+title: Remote Sessions, Teleport & Remote Control
+---
+
+import { FlowDiagram, Node, Conn, Branches, Group } from '@site/src/components/Diagrams';
+
+# Remote Sessions, Teleport & Remote Control
+
+Claude Code is not limited to a local terminal session. The source includes a separate runtime for remote control, remote code sessions, and direct-connect transports built on the same SDK message protocol.
+
+## Remote Runtime at a Glance
+
+<FlowDiagram>
+  <Node icon="🧑‍💻" variant="primary">CLI / IDE / Claude web</Node>
+  <Conn />
+  <Node icon="🌐">Sessions API + WebSocket transport</Node>
+  <Conn />
+  <Node icon="🔁" variant="highlight">Remote session manager</Node>
+  <Conn />
+  <Group label="Remote Worker">
+    <Node icon="⚙️">Headless Claude Code runtime</Node>
+    <Conn size="short" />
+    <Node icon="📡">SDK messages + control requests</Node>
+  </Group>
+  <Conn />
+  <Node icon="📤">User-visible output + permission prompts</Node>
+</FlowDiagram>
+
+## There Are Multiple Remote Paths
+
+| Path | Source | What It Does |
+|------|--------|--------------|
+| Bridge / remote-control CLI mode | `src/entrypoints/cli.tsx`, `src/bridge/bridgeMain.ts` | Fast-path subcommand that serves the local machine as a remote-control environment |
+| Remote session client | `src/remote/RemoteSessionManager.ts` | Receives SDK messages over WebSocket and sends user events over HTTP |
+| Direct connect | `src/server/directConnectManager.ts` | WebSocket-only transport for direct session messaging and permission responses |
+| Teleport / Sessions API | `src/utils/teleport/api.ts` | Session listing, API request preparation, retry logic, and session-resource types |
+
+The important architectural point is that these are transports and orchestration layers around the same headless runtime, not a separate agent implementation.
+
+## Permission Requests Travel Across the Wire
+
+Remote sessions reuse the SDK control protocol instead of inventing a second permission system:
+
+| Remote Event | Local Meaning |
+|--------------|---------------|
+| `control_request` with `can_use_tool` | Ask the connected client to approve or deny a tool call |
+| `control_response` | Return the allow/deny decision back to the remote worker |
+| `control_cancel_request` | Cancel a pending permission prompt |
+| `interrupt` | Stop the currently running turn |
+
+This is why the remote managers look so similar to the headless SDK transport: they are forwarding the same structured message types.
+
+## Teleport and Sessions API
+
+`src/utils/teleport/api.ts` provides the client-side API surface for remote code sessions:
+
+| Capability | Source-Backed Behavior |
+|------------|------------------------|
+| Authentication | Requires Claude.ai OAuth access token plus organization UUID |
+| Session listing | Fetches `/v1/sessions` and maps responses into local session types |
+| Retry behavior | Retries transient network and 5xx failures with exponential backoff |
+| Session context | Tracks repo sources, cwd, outcomes, model overrides, and prompt overrides |
+
+## Startup Integration
+
+The remote path is wired very early:
+
+- `src/entrypoints/cli.tsx` routes `remote-control`, `rc`, `remote`, `sync`, and `bridge` before the full CLI loads.
+- That path checks authentication, remote-control eligibility, minimum version rules, and org policy limits before entering `bridgeMain()`.
+- `src/entrypoints/init.ts` also contains CCR-specific upstream-proxy initialization so remote workers can reach configured upstreams.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/entrypoints/cli.tsx` | Fast-path routing into bridge / remote-control mode |
+| `src/bridge/bridgeMain.ts` | Main bridge-mode orchestration |
+| `src/bridge/bridgeEnabled.ts` | Runtime eligibility and gate checks for bridge mode |
+| `src/remote/RemoteSessionManager.ts` | WebSocket + HTTP manager for remote sessions |
+| `src/server/directConnectManager.ts` | Direct-connect WebSocket transport and permission responses |
+| `src/utils/teleport/api.ts` | Sessions API client, request prep, retry logic, and session types |

@@ -215,7 +215,7 @@ How does each framework ensure the model sends valid arguments?
 | **Claude SDK** | Python types → JSON Schema | Type conversion at schema level | JSON Schema pass-through |
 
 :::info Key difference
-Claude Code validates **at execution time** with Zod inside `buildTool()`. Most Python frameworks validate **at schema creation time** with Pydantic and rely on the model respecting the JSON Schema.
+Claude Code validates **at execution time** with Zod inside `buildTool()`. The Python frameworks also generate schemas up front, but they typically validate again at invocation time with Pydantic or equivalent runtime parsing.
 :::
 
 ## Permission & Safety
@@ -412,7 +412,7 @@ Claude Code is the **only framework** that partitions tools into safe (parallel)
 | **Tool count** | 40+ built-in | ~10 built-in | ~10 built-in | Community tools | Via LangChain | Via MCP |
 | **Read-only flag** | `isReadOnly()` | None | None | None | None | `readOnly` annotation |
 | **Destructive flag** | `isDestructive()` | None | None | None | None | `destructive` annotation |
-| **State injection** | Via `ToolContext` | Via `ToolContext` | Via `ToolContext` | `InjectedState` | `InjectedState/Store` | Via MCP context |
+| **State injection** | Via `ToolContext` | Via `ToolContext` | Via `ToolContext` | `ToolRuntime` / injected args | `InjectedState/Store` | Via MCP context |
 
 ## The Takeaway
 

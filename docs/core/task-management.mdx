@@ -47,6 +47,22 @@ Claude Code supports 7 task types, covering shell commands, agent work, remote e
 | `monitor_mcp` | Watch an MCP server | Event monitoring |
 | `dream` | Background speculative work | Memory tidying |
 
+### Workflow Tasks (`local_workflow`)
+
+Workflow execution is not just a command-registry concern. The task system also models it as its own background task type:
+
+| Source | What It Shows |
+|--------|----------------|
+| `src/Task.ts` | `local_workflow` is a first-class task type |
+| `src/tasks/pillLabel.ts` | Workflow runs get their own pill labels: `1 background workflow` / `background workflows` |
+| `src/commands.ts` + `src/tools.ts` | Workflow commands and the `WorkflowTool` are both feature-gated integration points |
+
+That split matters architecturally: workflow scripts can surface as slash commands, but once started they are tracked by the same task board and notification system as other background work.
+
+:::note Recovered surface
+The workflow implementation itself is only partially recovered in this source dump, so this page stops at the task-system integration points that are directly visible in source.
+:::
+
 ## Task Lifecycle
 
 <FlowDiagram>
@@ -174,8 +190,8 @@ run_state = result.to_state()  # Snapshot for persistence
 resumed = Runner.run(agent, state=run_state)
 
 # Cancellation
-await result.cancel("after_turn")  # Graceful
-await result.cancel("immediate")   # Force
+result.cancel("after_turn")  # Graceful
+result.cancel("immediate")   # Force
 ```
 
 **No persistent task system.** Background work is asyncio tasks within a single run. Interruption/resumption via `RunState` serialization. No disk persistence or cross-session tasks.
@@ -185,7 +201,7 @@ await result.cancel("immediate")   # Force
 
 ```python title="langgraph/checkpoint/base/__init__.py"
 # Checkpointing — persistent state across invocations
-graph = create_agent(model, tools, checkpointer=MemorySaver())
+graph = create_agent(model, tools, checkpointer=InMemorySaver())
 
 # Run with thread ID for persistence
 result = graph.invoke(input, {"configurable": {"thread_id": "t1"}})
@@ -234,6 +250,7 @@ Claude Code is the **only framework** with a dedicated background task system th
 |------|---------|
 | `src/Task.ts` | Task type definitions |
 | `src/tasks/` | Task implementations (8 types) |
+| `src/tasks/pillLabel.ts` | User-facing labels for task types, including `local_workflow` |
 | `src/tools/TaskCreateTool/` | Task creation |
 | `src/tools/TaskOutputTool/` | Output retrieval |
 | `src/tools/TodoWriteTool/` | Session checklist |

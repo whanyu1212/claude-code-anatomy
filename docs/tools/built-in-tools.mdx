@@ -7,7 +7,7 @@ import ToolCatalog from '@site/src/components/ToolCatalog';
 
 # Built-in Tools
 
-All 40 built-in tools organized by category. Filter by trait, click any card to expand.
+This catalog focuses on the stable built-in tool surface used in the main query loop. Feature-gated, test-only, and runtime-generated wrappers are documented in the [Tool Definitions](/appendix/tool-definitions) appendix instead.
 
 <ToolCatalog />
 
@@ -24,15 +24,9 @@ Not all agents have access to all tools. Sub-agents get filtered tool sets:
 
 ## Key Source Files
 
-| Directory | Tools |
-|-----------|-------|
-| `src/tools/FileReadTool/` | Read |
-| `src/tools/FileEditTool/` | FileEdit |
-| `src/tools/FileWriteTool/` | FileWrite |
-| `src/tools/GlobTool/` | Glob |
-| `src/tools/GrepTool/` | Grep |
-| `src/tools/BashTool/` | Bash |
-| `src/tools/AgentTool/` | Agent, SendMessage |
-| `src/tools/TaskCreateTool/` | TaskCreate |
-| `src/tools/MCPTool/` | MCPTool |
-| `src/tools/SkillTool/` | SkillTool |
+| File / Directory | Purpose |
+|------------------|---------|
+| `src/tools.ts` | Base registry via `getAllBaseTools()`; this is the main source of truth for built-in tool availability |
+| `src/tools/` | Tool implementations for file, shell, web, agent, task, planning, and infrastructure tools |
+| `src/services/mcp/client.ts` | Runtime wrapping of MCP server tools into `mcp__{server}__{tool}` names |
+| `src/tools/SyntheticOutputTool/` | SDK-only synthetic structured-output tool, documented separately from the base registry |

@@ -170,10 +170,29 @@ The permission system supports different decision handlers depending on context:
 | Swarm worker | Swarm | Syncs with leader via mailbox |
 | Background task | Background | Auto-deny (no UI available) |
 
+## How Other Frameworks Compare
+
+Claude Code's permission model is unusually integrated: approval policy, rule sources, interactive UI, and resume behavior all live in the same runtime layer.
+
+| Framework | Approval Primitive | Runtime Shape | Who Resolves It |
+|-----------|--------------------|---------------|-----------------|
+| **Claude Code** | Permission modes + rules + classifier + hooks | Tool gate before execution | Built-in REPL / coordinator / SDK callback |
+| **Google ADK** | Per-tool `require_confirmation`; bash prefix policy | Tool asks through `ToolContext` | Host app / tool confirmation handler |
+| **OpenAI Agents** | Tool approval callbacks + `ToolApprovalItem` interruptions | Pending approvals for shell, patch, MCP, or nested agent-tool runs | Caller records decision and resumes run |
+| **LangChain / LangGraph** | `interrupt_before` checkpoints | Graph pauses before selected nodes | Caller inspects state and resumes the graph |
+
+:::info Key difference
+Claude Code treats permissions as a first-class runtime subsystem. The other frameworks expose approval points, but the surrounding policy engine, UI, and resume loop are usually left to the host application or graph client.
+:::
+
 ## Key Source Files
 
 | File | Purpose |
 |------|---------|
 | `src/types/permissions.ts` | Permission type definitions |
-| `src/utils/permissions/` | Permission logic (20+ files) |
+| `src/utils/permissions/permissions.ts` | Core permission resolution and approval reasons |
+| `src/utils/permissions/permissionSetup.ts` | Rule loading and permission bootstrapping |
+| `src/hooks/toolPermission/handlers/interactiveHandler.ts` | Interactive approval UI handler |
+| `src/hooks/toolPermission/handlers/swarmWorkerHandler.ts` | Worker-side approval forwarding in swarm mode |
+| `src/entrypoints/sdk/controlSchemas.ts` | SDK `can_use_tool` approval protocol |
 | `src/hooks/useCanUseTool.tsx` | Permission check React hook |

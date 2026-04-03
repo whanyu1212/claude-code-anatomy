@@ -1,0 +1,107 @@
+---
+title: Prompt Suggestions & Speculation
+---
+
+import { FlowDiagram, Node, Conn, Branches, Group } from '@site/src/components/Diagrams';
+
+# Prompt Suggestions & Speculation
+
+The main REPL loop has a sidecar system for suggesting the user's next prompt and, when enabled, **speculating ahead** on that candidate prompt before the user accepts it.
+
+## Where It Sits
+
+<FlowDiagram>
+  <Node icon="⌨️" variant="primary">Main REPL turn completes</Node>
+  <Conn />
+  <Node icon="💡">Prompt suggestion service</Node>
+  <Conn size="short" />
+  <Branches cols={2}>
+    <Node variant="subtle">Store suggestion for the UI</Node>
+    <Group label="If speculation is enabled">
+      <Node icon="🔮" variant="highlight">Start speculative fork</Node>
+      <Conn size="short" />
+      <Node variant="subtle">Run ahead on the suggested next turn</Node>
+    </Group>
+  </Branches>
+</FlowDiagram>
+
+This is adjacent to the agent harness, not part of the core loop itself. The main turn finishes normally first. Suggestion generation and speculation are follow-on services driven by `src/services/PromptSuggestion/`.
+
+## Prompt Suggestions
+
+`src/services/PromptSuggestion/promptSuggestion.ts` decides whether a suggestion should exist at all:
+
+| Gate | Source-Backed Behavior |
+|------|------------------------|
+| Global enablement | `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION` can override the default gate |
+| Feature flag | GrowthBook flag `tengu_chomp_inflection` gates the feature |
+| Interactive mode | Disabled in non-interactive runs |
+| Swarm behavior | Disabled for swarm teammates; only the leader shows suggestions |
+| User setting | Respects `promptSuggestionEnabled !== false` |
+
+Suggestion generation is also suppressed when the REPL is in a state where a follow-up prompt would be misleading:
+
+| Suppress Reason | Why It Exists |
+|-----------------|---------------|
+| Pending permission request | The current turn is still waiting on approval |
+| Elicitation queue active | Another structured prompt/elicitation is already in progress |
+| Plan mode | The UI is in a different interaction mode |
+| External user with blocked limits | Current product limits do not allow suggestions |
+
+The service only attempts generation after at least **two assistant turns**, and it skips generation if the last assistant message was an API error. When a suggestion is accepted, it becomes the next real user message.
+
+## Speculation Is a Forked Overlay Run
+
+If prompt suggestions are enabled and speculation is allowed, Claude Code can fork a speculative run on top of the suggested next prompt:
+
+<FlowDiagram>
+  <Node icon="💡" variant="primary">Suggested next prompt</Node>
+  <Conn />
+  <Node icon="🧪">Create speculation session + overlay directory</Node>
+  <Conn />
+  <Group label="Speculative Run">
+    <Node icon="📖">Allow read-only tools to continue</Node>
+    <Conn size="short" />
+    <Node icon="✏️">Redirect writes into overlay when allowed</Node>
+    <Conn size="short" />
+    <Node icon="🛑">Stop at a boundary if speculation becomes unsafe</Node>
+  </Group>
+  <Conn />
+  <Node icon="📦">Wait for user to accept or ignore</Node>
+</FlowDiagram>
+
+The overlay is not a git worktree. `src/services/PromptSuggestion/speculation.ts` creates a copy-on-write directory under Claude's temp directory and redirects file reads and writes through it during the speculative run.
+
+### Tool Boundaries
+
+The speculation engine is intentionally narrow:
+
+| Tool Behavior | Source-Backed Rule |
+|---------------|--------------------|
+| Safe read-only tools continue | `Read`, `Glob`, `Grep`, `ToolSearch`, `LSP`, `TaskGet`, `TaskList` |
+| Write tools may continue | `Edit`, `Write`, `NotebookEdit`, but only if permissions effectively allow auto-accept edits |
+| Bash boundary | Non-read-only shell commands stop speculation |
+| Default boundary | Any other unapproved tool stops speculation |
+
+The source also imposes hard limits of `MAX_SPECULATION_TURNS = 20` and `MAX_SPECULATION_MESSAGES = 100`.
+
+## Accepting a Speculative Result
+
+When the user accepts a suggestion, the speculative state can be promoted back into the main session:
+
+| Step | Source-Backed Behavior |
+|------|------------------------|
+| Abort speculation | Stop the speculative run and clean up timers/state |
+| Copy overlay back | `copyOverlayToMain(...)` copies overlay files into the working directory |
+| Merge messages | Speculated messages are cleaned and injected into the main transcript |
+| Merge read cache | Extracted read-file cache entries are promoted back into the main session |
+| Promote next suggestion | If speculation completed cleanly, a pipelined next suggestion may also be surfaced |
+
+This is what makes speculation feel fast: some read, edit, and reasoning work may already be complete before the user actually submits the next turn.
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/PromptSuggestion/promptSuggestion.ts` | Suggestion gating, suppression rules, and suggestion generation |
+| `src/services/PromptSuggestion/speculation.ts` | Speculative fork execution, overlay filesystem, and accept/merge flow |

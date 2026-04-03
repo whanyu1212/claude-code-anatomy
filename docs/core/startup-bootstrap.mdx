@@ -50,6 +50,28 @@ When no fast-path flag matches, the entry point dynamically imports `main.tsx` (
 
 <InitTimeline />
 
+## What `init()` Actually Wires Up
+
+The early startup work is split between `cli.tsx`, `entrypoints/init.ts`, and `main.tsx`. `init.ts` does more than simple config loading:
+
+| Startup Concern | Source-Backed Behavior |
+|-----------------|------------------------|
+| Config safety | Enables config parsing, applies safe env vars first, and installs extra CA certs before any TLS traffic |
+| Managed startup state | Creates loading promises for remote managed settings and policy limits so later systems can wait on them |
+| Network stack | Configures global mTLS, proxy-aware HTTP agents, and a fire-and-forget Anthropic API preconnect |
+| CCR-specific plumbing | Starts the upstream proxy relay in remote mode so subprocesses inherit the right proxy env |
+| Cleanup hooks | Registers graceful shutdown plus cleanup for LSP and team state |
+| Scratchpad filesystem | Creates the scratchpad directory if that feature is enabled |
+
+## Split Between `init.ts` and `main.tsx`
+
+| File | Role |
+|------|------|
+| `src/entrypoints/init.ts` | Safe env bootstrapping, network configuration, cleanup registration, remote-settings readiness, scratchpad setup |
+| `src/main.tsx` | Trust flow, settings/UI initialization, plugin/MCP/tool/command loading, LSP manager init, background settings sync upload, and REPL launch |
+
+That split matters because some systems need to start before the UI exists. For example, remote managed settings, policy limits, proxy config, and preconnect all happen before the interactive shell is fully rendered.
+
 ## Session Restoration
 
 When you use `--resume` or `--continue`, the bootstrap path changes:
@@ -81,6 +103,7 @@ Once `launchRepl()` fires, the terminal UI is live and waiting for your first in
 | File | Lines | Purpose |
 |------|-------|---------|
 | `src/entrypoints/cli.tsx` | ~302 | Bootstrap entry, fast-path routing |
+| `src/entrypoints/init.ts` | ~300 | Early init: config safety, network stack, cleanup, remote settings readiness |
 | `src/main.tsx` | ~4,683 | Full CLI initialization |
 | `src/replLauncher.tsx` | — | REPL rendering setup |
 | `src/bootstrap/state.ts` | — | Session state initialization |

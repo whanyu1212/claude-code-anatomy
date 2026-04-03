@@ -14,13 +14,17 @@ How Claude Code actually works, from the decompiled source.
 
 Claude Code ships as an opaque binary. You can't read how it picks tools, gates permissions, or coordinates agents. So we decompiled it from npm source maps and documented the internals across **4,756 TypeScript files**. Key sections include framework comparisons (ADK, OpenAI Agents SDK, LangChain, LangGraph) so the patterns are portable to your own agent architecture.
 
+:::note Scope
+Some areas of the recovered tree are feature-gated, stubbed, or only partially present. When a subsystem could not be verified directly from source, this site intentionally avoids speculating beyond the observable implementation.
+:::
+
 ## How to Read This Site
 
-**Sequential** — Read Core Architecture in order: Agent Loop → Tool System → Task Management → Prompt, Memory & Context → State & Sessions. This traces how a message flows through the entire system.
+**Sequential** — Read Core Architecture in order: Agent Loop → Sub-Agents → Headless Query Engine & SDK Protocol → Tool System → Task Management → Prompt, Memory & Context → State & Sessions. This traces how the local and headless runtimes fit together.
 
-**By topic** — Jump to any section. Extensions and Security are self-contained. Runtime & Infrastructure covers startup, rendering, and API internals.
+**By topic** — Jump to any section. Extensions and Security are self-contained. Runtime & Infrastructure covers startup, rendering, API internals, and remote session architecture.
 
-**As a reference** — The Appendix has the full directory map, all 90+ feature flags, complete tool definitions, and a glossary.
+**As a reference** — The Appendix has the full directory map, all 90+ feature flags, the command catalog, complete tool definitions, and a glossary.
 
 ## Architecture at a Glance
 
