@@ -211,6 +211,25 @@ nav.menu {
   padding-right: 0;
 }
 
+/* Mobile sidebar — ensure full scrollability */
+@media (max-width: 996px) {
+  .navbar-sidebar {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navbar-sidebar .menu {
+    overflow-y: auto;
+    max-height: calc(100vh - 60px);
+    padding-bottom: 2rem;
+  }
+
+  .navbar-sidebar__items {
+    overflow-y: auto;
+    max-height: calc(100vh - 60px);
+  }
+}
+
 /* ----------------------------------------------------------------
    Code Blocks (Supabase/Vercel-inspired)
    ---------------------------------------------------------------- */
