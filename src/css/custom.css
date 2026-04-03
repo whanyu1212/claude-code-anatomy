@@ -211,22 +211,41 @@ nav.menu {
   padding-right: 0;
 }
 
-/* Mobile sidebar — ensure full scrollability */
+/* Mobile sidebar — fix z-index and scrolling */
 @media (max-width: 996px) {
   .navbar-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    background: var(--ifm-background-color, #ffffff);
+  }
+
+  [data-theme='dark'] .navbar-sidebar {
+    background: var(--cca-bg, #161616);
   }
 
   .navbar-sidebar .menu {
     overflow-y: auto;
-    max-height: calc(100vh - 60px);
-    padding-bottom: 2rem;
+    padding-bottom: 3rem;
   }
 
   .navbar-sidebar__items {
     overflow-y: auto;
-    max-height: calc(100vh - 60px);
+  }
+
+  /* Ensure the sidebar backdrop covers the page */
+  .navbar-sidebar--show .navbar-sidebar__overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 99;
   }
 }
 
