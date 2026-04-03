@@ -133,6 +133,66 @@ export function TerminalTurnDemo(): React.JSX.Element {
   );
 }
 
+export function PermissionDialogDemo(): React.JSX.Element {
+  return (
+    <div className={s.terminal}>
+      <TitleBar title="Permission Request" />
+      <div className={s.content}>
+        <div className={s.permCard}>
+          <div className={s.permHeaderRow}>
+            <div>
+              <div className={s.permEyebrow}>Approval Required</div>
+              <div className={s.permTitle}>Claude wants to run a shell command</div>
+            </div>
+            <span className={s.permBadge}>Bash</span>
+          </div>
+
+          <div className={s.permCommandBox}>
+            <span className={s.permPrompt}>{'~/claude-code-anatomy '}</span>
+            <span className={s.userInput}>rm -rf dist/</span>
+          </div>
+
+          <div className={s.permMeta}>
+            <span className={s.permMetaItem}>Mode: default</span>
+            <span className={s.permMetaItem}>Sandbox: workspace-write</span>
+            <span className={s.permMetaItem}>Risk: destructive</span>
+          </div>
+
+          <div className={s.permHelp}>
+            This command deletes the generated build output and needs your approval before execution.
+          </div>
+
+          <div className={s.permActionGrid}>
+            <div className={`${s.permActionCard} ${s.permActionPrimary}`}>
+              <div className={s.permShortcut}>Y</div>
+              <div>
+                <div className={s.permActionTitle}>Allow once</div>
+                <div className={s.permActionCopy}>Run this command for this prompt only.</div>
+              </div>
+            </div>
+
+            <div className={s.permActionCard}>
+              <div className={s.permShortcut}>N</div>
+              <div>
+                <div className={s.permActionTitle}>Deny</div>
+                <div className={s.permActionCopy}>Block execution and return to the REPL.</div>
+              </div>
+            </div>
+
+            <div className={s.permActionCard}>
+              <div className={s.permShortcut}>A</div>
+              <div>
+                <div className={s.permActionTitle}>Always allow</div>
+                <div className={s.permActionCopy}>Persist a permission rule for future matches.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Rendering stack visualization */
 export function RenderingStackDemo(): React.JSX.Element {
   return (

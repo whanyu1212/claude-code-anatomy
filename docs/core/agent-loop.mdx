@@ -53,13 +53,12 @@ The loop terminates when:
 | **hook_stopped** | A lifecycle hook vetoed continuation |
 | **prompt_too_long** | Context exceeded — trigger compaction and retry |
 
-## Where to Go Next
+## Key Source Files
 
-The Agent Loop touches every subsystem. Dive deeper into each:
-
-- **[Startup & Bootstrap](./startup-bootstrap.mdx)** — how the CLI starts up before the loop begins
-- **[Input & Rendering](./input-rendering.mdx)** — how keystrokes enter and responses render
-- **[Prompt, Memory & Context](./prompt-memory-context.mdx)** — system prompt assembly, CLAUDE.md, memory, and compaction
-- **[API Client](./api-client.mdx)** — streaming, retries, and multi-provider support
-- **[Tool Execution](/tools/tool-execution)** — how tools run in parallel with permission checks
-- **[Permission Model](/security/permission-model)** — how the permission check at step 5 works
+| File | Purpose |
+|------|---------|
+| `src/query.ts` | Main query loop: prompt assembly, stream processing, message normalization |
+| `src/services/api/claude.ts` | Streaming API call orchestration and provider-facing request handling |
+| `src/services/tools/toolExecution.ts` | Permission resolution, hook checks, and per-tool execution decisions |
+| `src/services/tools/toolOrchestration.ts` | Parallel vs sequential tool scheduling and result collection |
+| `src/screens/REPL.tsx` | REPL entry point where user input enters and loop output is rendered |
